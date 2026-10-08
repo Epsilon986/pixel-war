@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Pixel War · V1</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+<main>
+  <h1>Pixel War <small>V1</small></h1>
+  <p>Simulation backend · quatre joueurs automatiques</p>
+  <section class="toolbar" aria-label="Contrôle de la simulation">
+    <strong id="state">Chargement…</strong>
+    <button data-action="start">Start</button><button data-action="pause">Pause</button>
+    <button data-action="resume">Resume</button><button data-action="stop">Stop</button><button data-action="reset">Reset</button>
+  </section>
+  <p id="error" role="alert"></p>
+  <div class="layout">
+    <section><h2>Board</h2><canvas id="board" width="200" height="200" aria-label="Aperçu du board"></canvas><p id="dimensions"></p><p>Échantillonnage du board complet : des poses peuvent ne pas apparaître dans cet aperçu.</p></section>
+    <section><h2>Scores</h2><div id="scores"></div><h2>Métriques</h2><dl id="metrics"></dl></section>
+  </div>
+  <p>Actualisation toutes les secondes. Débits moyens sur le temps actif ; latences incluant l’attente du verrou.</p>
+</main>
+</body>
+</html>
