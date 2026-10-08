@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ConfigurationTests {
     @Test void invalidConfigurationPreventsStartup() {
-        for (String property : new String[]{"pixelwar.board.width=0", "pixelwar.board.height=-1", "pixelwar.players.interval-ms=0", "pixelwar.preview.width=0", "pixelwar.preview.height=-2"}) {
+        for (String property : new String[]{"pixelwar.board.width=0", "pixelwar.board.height=-1", "pixelwar.players.interval-ns=0", "pixelwar.preview.width=0", "pixelwar.preview.height=-2"}) {
             new ApplicationContextRunner().withUserConfiguration(PixelWarConfiguration.class)
                     .withPropertyValues("pixelwar.board.width=2", "pixelwar.board.height=2", property)
                     .run(context -> {

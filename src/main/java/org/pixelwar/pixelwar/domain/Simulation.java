@@ -16,8 +16,8 @@ import org.slf4j.LoggerFactory;
 /** The engine has no dependency on HTTP or Spring. All state is guarded by this monitor. */
 public final class Simulation implements AutoCloseable {
     public enum State { STOPPED, RUNNING, PAUSED }
-    public record Player(int id, String name, CellState color, long intervalMs) {}
-    public record Configuration(int width, int height, long intervalMs, int previewWidth, int previewHeight) {}
+    public record Player(int id, String name, CellState color, long intervalNs) {}
+    public record Configuration(int width, int height, long intervalNs, int previewWidth, int previewHeight) {}
     public record Status(State state, long elapsedMs, Configuration configuration, long attempts, long modifications) {}
     public record Score(Player player, long cells, double percentage) {}
     public record PlayerMetrics(Player player, long attempts, long modifications) {}
@@ -40,13 +40,13 @@ public final class Simulation implements AutoCloseable {
     private boolean closed;
     private long generation;
 
-    public Simulation(Board board, long intervalMs, int previewWidth, int previewHeight) {
-        if (intervalMs <= 0 || previewWidth <= 0 || previewHeight <= 0) throw new IllegalArgumentException("Interval and preview dimensions must be positive");
+    public Simulation(Board board, long intervalNs, int previewWidth, int previewHeight) {
+        if (intervalNs <= 0 || previewWidth <= 0 || previewHeight <= 0) throw new IllegalArgumentException("Interval and preview dimensions must be positive");
         this.board = board;
-        configuration = new Configuration(board.width(), board.height(), intervalMs, previewWidth, previewHeight);
-        players = List.of(new Player(1, "Player 1", CellState.RED, intervalMs), new Player(2, "Player 2", CellState.BLUE, intervalMs),
-                new Player(3, "Player 3", CellState.GREEN, intervalMs), new Player(4, "Player 4", CellState.YELLOW, intervalMs));
-        LOG.info("Board configured: {} x {}, interval {} ms", board.width(), board.height(), intervalMs);
+        configuration = new Configuration(board.width(), board.height(), intervalNs, previewWidth, previewHeight);
+        players = List.of(new Player(1, "Player 1", CellState.RED, intervalNs), new Player(2, "Player 2", CellState.BLUE, intervalNs),
+                new Player(3, "Player 3", CellState.GREEN, intervalNs), new Player(4, "Player 4", CellState.YELLOW, intervalNs));
+        LOG.info("Board configured: {} x {}, interval {} ns", board.width(), board.height(), intervalNs);
     }
 
     public synchronized Status start() {
@@ -55,8 +55,7 @@ public final class Simulation implements AutoCloseable {
         if (state == State.RUNNING) return status();
         runningSince = System.nanoTime();
         state = State.RUNNING;
-        long currentGeneration = ++generation;
-        for (Player player : players) tasks.add(executor.scheduleAtFixedRate(() -> play(player, currentGeneration), 0, player.intervalMs(), TimeUnit.MILLISECONDS));
+        schedulePlayers();
         LOG.info("Simulation started");
         return status();
     }
@@ -65,6 +64,7 @@ public final class Simulation implements AutoCloseable {
         if (state == State.PAUSED) return status();
         if (state != State.RUNNING) throw new IllegalStateException("Only a running simulation can pause");
         freeze(State.PAUSED);
+        cancelPlayers();
         LOG.info("Simulation paused");
         return status();
     }
@@ -74,17 +74,27 @@ public final class Simulation implements AutoCloseable {
         if (state != State.PAUSED) throw new IllegalStateException("Only a paused simulation can resume");
         runningSince = System.nanoTime();
         state = State.RUNNING;
+        schedulePlayers();
         LOG.info("Simulation resumed");
         return status();
     }
 
     public synchronized Status stop() {
-        generation++;
         freeze(State.STOPPED);
-        tasks.forEach(task -> task.cancel(false));
-        tasks.clear();
+        cancelPlayers();
         LOG.info("Simulation stopped");
         return status();
+    }
+
+    private void schedulePlayers() {
+        long currentGeneration = ++generation;
+        for (Player player : players) tasks.add(executor.scheduleAtFixedRate(() -> play(player, currentGeneration), 0, player.intervalNs(), TimeUnit.NANOSECONDS));
+    }
+
+    private void cancelPlayers() {
+        generation++;
+        tasks.forEach(task -> task.cancel(false));
+        tasks.clear();
     }
 
     public synchronized Status reset() {

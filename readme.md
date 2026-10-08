@@ -30,14 +30,14 @@ Les propriétés peuvent être modifiées dans `src/main/resources/application.p
 |---|---:|---|
 | `pixelwar.board.width` | 4000 | Largeur du board |
 | `pixelwar.board.height` | 4000 | Hauteur du board |
-| `pixelwar.players.interval-ms` | 10 | Intervalle de chaque joueur en ms |
+| `pixelwar.players.interval-ns` | 1000 | Intervalle de chaque joueur en nanosecondes |
 | `pixelwar.preview.width` | 200 | Largeur maximale de l'aperçu |
 | `pixelwar.preview.height` | 200 | Hauteur maximale de l'aperçu |
 
 Toutes ces valeurs doivent être strictement positives. Une valeur invalide fait échouer le démarrage avec un message indiquant les propriétés concernées.
 
 ```powershell
-java -jar target/pixel-war-0.0.1-SNAPSHOT.jar --pixelwar.board.width=1000 --pixelwar.board.height=1000 --pixelwar.players.interval-ms=2
+java -jar target/pixel-war-0.0.1-SNAPSHOT.jar --pixelwar.board.width=1000 --pixelwar.board.height=1000 --pixelwar.players.interval-ns=100
 java -jar target/pixel-war-0.0.1-SNAPSHOT.jar --spring.profiles.active=small
 ```
 
@@ -124,6 +124,10 @@ java -XX:StartFlightRecording=filename=target/pixelwar-v1.jfr,duration=60s,setti
 
 Pendant l'enregistrement, démarrer la simulation et consulter le front. Ouvrir le fichier dans IntelliJ (selon édition) ou JDK Mission Control. Examiner les allocations de `Board.counts`, les parcours complets et l'attente des moniteurs. Après identification d'un point chaud, un microbenchmark JMH pourra isoler son coût dans une itération ultérieure.
 
-Les débits ne garantissent pas les 400 tentatives/s théoriques : la contention, le scheduler, le GC et le polling interviennent. Aucun gain de performance n'est revendiqué pour cette baseline.
+L'intervalle est désormais configuré avec `pixelwar.players.interval-ns` ; l'ancienne propriété `interval-ms` doit être remplacée. Conversion : 1 ms = 1 000 000 ns. L'API expose `intervalNs` pour la configuration et chaque joueur. Le défaut de 1 000 ns (1 µs) vise une charge élevée ; utiliser 10 000 000 ns pour retrouver le rythme initial de 10 ms. Pour augmenter davantage la charge, essayer 100 ns ou 1 ns.
+
+Les nanosecondes expriment la cadence demandée au scheduler, sans garantie de précision à cette échelle. Le débit réel dépend du coût des actions, de la contention, du scheduler, du GC et du polling. Une cadence très courte fait travailler les joueurs en continu lorsque le scheduler est en retard. Pause et Stop annulent les tâches ; Resume crée de nouvelles tâches sans rattraper la durée passée en pause.
+
+Un contrôle exploratoire avec le défaut de 1 000 ns, un board 4000 × 4000 et une heap de 1 Gio sous JDK 25 a produit environ 5,2 millions de tentatives en 3,12 secondes (1,67 million/s), avec 4,44 millions de cellules occupées. Ce relevé court sans polling navigateur confirme l'accélération sur la machine de développement ; il ne garantit pas ce débit sur une autre machine.
 
 Une [première observation de la V1](docs/V1-baseline.md) consigne les mesures HTTP et les constats JFR effectués sur la machine de développement, ainsi que leurs limites.

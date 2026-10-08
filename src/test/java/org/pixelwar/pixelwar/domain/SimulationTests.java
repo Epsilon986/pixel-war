@@ -10,7 +10,7 @@ class SimulationTests {
         board.place(0, 0, CellState.RED);
         board.place(1, 0, CellState.RED);
         board.place(0, 1, CellState.BLUE);
-        try (Simulation simulation = new Simulation(board, 10, 2, 2)) {
+        try (Simulation simulation = new Simulation(board, 10_000_000, 2, 2)) {
             var scores = simulation.scores();
             assertEquals(4, scores.size());
             assertEquals(2, scores.getFirst().cells());
@@ -21,7 +21,7 @@ class SimulationTests {
         }
     }
     @Test void lifecycleFreezesActionsAndResetsAllCounters() throws Exception {
-        try (Simulation simulation = new Simulation(new Board(1, 1), 2, 1, 1)) {
+        try (Simulation simulation = new Simulation(new Board(1, 1), 2_000_000, 1, 1)) {
             assertEquals(Simulation.State.STOPPED, simulation.status().state());
             assertThrows(IllegalStateException.class, simulation::pause);
             assertThrows(IllegalStateException.class, simulation::resume);
@@ -57,6 +57,23 @@ class SimulationTests {
             assertEquals(1L, simulation.metrics().cellsByColor().get(CellState.EMPTY));
         }
     }
+    @Test void nanosecondIntervalsGenerateLoadAndPauseCleanly() throws Exception {
+        try (Simulation simulation = new Simulation(new Board(20, 20), 1_000, 10, 10)) {
+            assertEquals(1_000, simulation.status().configuration().intervalNs());
+            simulation.start();
+            awaitAttempts(simulation, 10_000);
+            simulation.pause();
+            var paused = simulation.status();
+            Thread.sleep(20);
+            assertEquals(paused, simulation.status());
+            assertTrue(simulation.metrics().players().stream().allMatch(p -> p.player().intervalNs() == 1_000));
+            simulation.resume();
+            awaitAttempts(simulation, paused.attempts() + 1_000);
+            simulation.reset();
+            assertEquals(0, simulation.status().attempts());
+        }
+    }
+
     private void awaitAttempts(Simulation simulation, long target) {
         assertTimeoutPreemptively(Duration.ofSeconds(3), () -> {
             while (simulation.status().attempts() < target) Thread.sleep(2);

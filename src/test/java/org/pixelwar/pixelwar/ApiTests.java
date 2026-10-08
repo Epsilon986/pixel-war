@@ -17,7 +17,8 @@ class ApiTests {
     @Autowired Simulation simulation;
     @BeforeEach void reset() { simulation.reset(); }
     @Test void lifecycleEndpoints() throws Exception {
-        mvc.perform(get("/api/simulation")).andExpect(status().isOk()).andExpect(jsonPath("$.state").value("STOPPED"));
+        mvc.perform(get("/api/simulation")).andExpect(status().isOk()).andExpect(jsonPath("$.state").value("STOPPED"))
+                .andExpect(jsonPath("$.configuration.intervalNs").value(1000));
         mvc.perform(post("/api/simulation/pause")).andExpect(status().isConflict()).andExpect(jsonPath("$.error").exists());
         action("start", "RUNNING");
         action("pause", "PAUSED");
