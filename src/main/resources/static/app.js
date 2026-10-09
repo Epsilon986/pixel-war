@@ -26,7 +26,10 @@ async function refresh() {
   const stockDescription = config.stock.enabled
     ? `recharge : ${number(config.stock.refillAmount)} pixels / ${number(config.stock.refillIntervalNs)} ns`
     : 'stock désactivé';
-  $('configuration').textContent = `Action : ${number(config.intervalNs)} ns · maximum ${config.maxPixelsPerAction} pixels/action · ${stockDescription} · conversions ${config.conversionEnabled ? 'activées' : 'désactivées'}`;
+  const strategyDescription = config.strategy === 'frontier'
+    ? `frontière · exploration ${number(config.explorationProbability * 100)} % · ${number(config.frontierSampleSize)} candidats`
+    : 'aléatoire';
+  $('configuration').textContent = `Stratégie : ${strategyDescription} · Action : ${number(config.intervalNs)} ns · maximum ${config.maxPixelsPerAction} pixels/action · ${stockDescription} · conversions ${config.conversionEnabled ? 'activées' : 'désactivées'}`;
   $('dimensions').textContent = `${config.width} × ${config.height} cellules · aperçu ${preview.width} × ${preview.height}`;
   const canvas = $('board'); canvas.width = preview.width; canvas.height = preview.height;
   const context = canvas.getContext('2d');
@@ -62,7 +65,10 @@ async function refresh() {
     'Heap utilisée / maximale': `${number(metrics.jvm.heapUsedBytes / 1048576)} / ${number(metrics.jvm.heapMaxBytes / 1048576)} Mio`,
     'Threads / processeurs': `${metrics.jvm.activeThreads} / ${metrics.jvm.availableProcessors}`,
     'CPU processus': metrics.jvm.processCpuLoad === null ? 'Indisponible' : `${number(metrics.jvm.processCpuLoad * 100)} %`,
-    'Cellules vides': number(metrics.cellsByColor.EMPTY)
+    'Cellules vides': number(metrics.cellsByColor.EMPTY),
+    'Frontières rouge / bleu / vert / jaune': ['RED', 'BLUE', 'GREEN', 'YELLOW'].map(color => number(metrics.frontiers.sizes[color])).join(' / '),
+    'Maintenance des frontières moyenne': `${number(metrics.frontiers.averageNanos / 1e3)} µs / changement`,
+    'Stockage des frontières estimé': `${number(metrics.frontiers.storageBytes / 1048576)} Mio`
   };
   metrics.players.forEach(p => rows[`${p.player.name} : actions / sans stock / conversions reçues`] = `${number(p.actions)} / ${number(p.actionsWithoutStock)} / ${number(p.conversionsReceived)}`);
   $('metrics').replaceChildren(...Object.entries(rows).flatMap(([label, value]) => {

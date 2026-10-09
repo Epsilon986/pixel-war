@@ -22,6 +22,9 @@ class ApiTests {
         mvc.perform(get("/api/simulation")).andExpect(status().isOk()).andExpect(jsonPath("$.state").value("STOPPED"))
                 .andExpect(jsonPath("$.configuration.intervalNs").value(1000))
                 .andExpect(jsonPath("$.configuration.conversionEnabled").value(true))
+                .andExpect(jsonPath("$.configuration.strategy").value("frontier"))
+                .andExpect(jsonPath("$.configuration.explorationProbability").value(0.10))
+                .andExpect(jsonPath("$.configuration.frontierSampleSize").value(10))
                 .andExpect(jsonPath("$.players[0].eliminated").value(false))
                 .andExpect(jsonPath("$.players[0].stock").value(100)).andExpect(jsonPath("$.players[0].stockCapacity").value(1000));
         mvc.perform(post("/api/simulation/pause")).andExpect(status().isConflict()).andExpect(jsonPath("$.error").exists());
@@ -33,6 +36,7 @@ class ApiTests {
         mvc.perform(get("/api/metrics")).andExpect(status().isOk()).andExpect(jsonPath("$.totalCells").value(400))
                 .andExpect(jsonPath("$.cellsByColor.EMPTY").value(400)).andExpect(jsonPath("$.pixelsConsumed").value(0))
                 .andExpect(jsonPath("$.conversions").value(0)).andExpect(jsonPath("$.conversionDurationNanos.minimumNanos").value(0))
+                .andExpect(jsonPath("$.frontiers.sizes.RED").value(0)).andExpect(jsonPath("$.frontiers.updates").value(0))
                 .andExpect(jsonPath("$.actions").value(0)).andExpect(jsonPath("$.players[0].conversionsReceived").value(0));
         mvc.perform(get("/api/board/preview")).andExpect(status().isOk()).andExpect(jsonPath("$.width").value(10)).andExpect(jsonPath("$.cells[0][0]").value("EMPTY"));
         mvc.perform(get("/")).andExpect(status().isOk());

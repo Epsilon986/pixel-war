@@ -20,7 +20,10 @@ public class PixelWarConfiguration {
                           @Value("${pixelwar.stock.refill-amount:100}") long refillAmount,
                           @Value("${pixelwar.stock.refill-interval-ns:1000000}") long refillIntervalNs,
                           @Value("${pixelwar.players.max-pixels-per-action:10}") int maxPixels,
-                          @Value("${pixelwar.conversion.enabled:true}") String conversionEnabled) {
+                          @Value("${pixelwar.conversion.enabled:true}") String conversionEnabled,
+                          @Value("${pixelwar.players.strategy:frontier}") String strategy,
+                          @Value("${pixelwar.players.exploration-probability:0.10}") double explorationProbability,
+                          @Value("${pixelwar.players.frontier-sample-size:10}") int frontierSampleSize) {
         if (!"true".equalsIgnoreCase(conversionEnabled) && !"false".equalsIgnoreCase(conversionEnabled)) {
             throw new IllegalArgumentException("pixelwar.conversion.enabled must be true or false");
         }
@@ -30,7 +33,7 @@ public class PixelWarConfiguration {
         // Validate everything before allocating a potentially very large board.
         var stock = new Stock.Configuration(initial, capacity, refillAmount, refillIntervalNs, Boolean.parseBoolean(stockEnabled));
         var configuration = new Simulation.Configuration(width, height, intervalNs, previewWidth, previewHeight,
-                stock, maxPixels, Boolean.parseBoolean(conversionEnabled));
+                stock, maxPixels, Boolean.parseBoolean(conversionEnabled), strategy, explorationProbability, frontierSampleSize);
         return new Simulation(configuration);
     }
 }

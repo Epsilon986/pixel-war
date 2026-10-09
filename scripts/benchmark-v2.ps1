@@ -38,7 +38,7 @@ foreach ($scenario in $scenarios) {
         try { $portProbe.Start() } finally { $portProbe.Stop() }
         $arguments = @('-Xmx1g', '-jar', ('"' + $artifact + '"'), "--server.port=$Port",
             "--pixelwar.board.width=$BoardSize", "--pixelwar.board.height=$BoardSize",
-            '--pixelwar.players.interval-ns=1000', "--pixelwar.players.max-pixels-per-action=$($scenario.Max)",
+            '--pixelwar.players.interval-ns=1000', '--pixelwar.players.strategy=random', "--pixelwar.players.max-pixels-per-action=$($scenario.Max)",
             "--pixelwar.stock.initial=$($scenario.Initial)", '--pixelwar.stock.capacity=1000000',
             "--pixelwar.stock.refill-amount=$($scenario.Refill)", "--pixelwar.stock.refill-interval-ns=$($scenario.Period)",
             "--pixelwar.conversion.enabled=$($scenario.Enabled)")

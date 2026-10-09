@@ -1,4 +1,31 @@
-# Pixel War — V2
+# Pixel War — V3
+
+La V3 ajoute une stratégie de frontière : exploration uniforme avec une probabilité de 10 %, évaluation de dix candidats et score favorisant les voisins alliés et les conversions potentielles. Les frontières sont mises à jour après chaque pose et conversion, sans parcours global. Le verrou, les stocks et les conversions simultanées de la V2 sont conservés. Un pixel de stock est consommé uniquement si la pose change une cellule.
+
+## Stratégies V3
+
+| Propriété | Défaut | Valeurs |
+|---|---:|---|
+| `pixelwar.players.strategy` | `frontier` | `frontier` ou `random` |
+| `pixelwar.players.exploration-probability` | `0.10` | Nombre fini de 0 à 1 inclus |
+| `pixelwar.players.frontier-sample-size` | `10` | Entier strictement positif |
+
+Le mode `random` conserve la référence V2 : tirage uniforme parmi les cellules vides, puis sur tout le plateau lorsqu’il est rempli. Dans le mode `frontier`, l’exploration et le repli sans frontière tirent sur tout le plateau. Les adversaires restent protégés tant qu’il reste une cellule vide, et les joueurs éliminés restent inactifs jusqu’au reset.
+
+```powershell
+java -Xmx1g -jar target/pixel-war-0.0.1-SNAPSHOT.jar --spring.profiles.active=small
+java -Xmx1g -jar target/pixel-war-0.0.1-SNAPSHOT.jar --spring.profiles.active=small --pixelwar.players.strategy=random
+```
+
+L’API expose ces paramètres dans `configuration` et ajoute `frontiers` aux métriques : tailles par couleur, nombre de changements suivis, temps de maintenance total/moyen et estimation du stockage. L’interface affiche ces informations. Les index sont alloués par blocs ; ils peuvent néanmoins occuper plusieurs centaines de Mio sur un grand plateau fragmenté. Le reset libère ces blocs et la capacité des listes.
+
+La spécification est dans [docs/v3-strategie-frontiere.md](docs/v3-strategie-frontiere.md), et les mesures dans [docs/V3-baseline.md](docs/V3-baseline.md). Pour reproduire la comparaison moteur :
+
+```powershell
+.\scripts\benchmark-v3.ps1 -Java 'java' -BoardSize 100
+```
+
+Le script compile le programme exploratoire avec le JDK sélectionné et génère des CSV et des images dans `target/v3-benchmark/`. Les sections suivantes documentent la V2 historique ; les mesures de parcours global ne décrivent plus la détection actuelle.
 
 Simulation Java destinée à l'étude des performances backend. Quatre joueurs automatiques posent des pixels sur un board partagé, utilisent un stock rechargeable et déclenchent une passe de conversion par voisinage après leurs poses.
 
