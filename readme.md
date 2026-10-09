@@ -2,6 +2,8 @@
 
 Simulation Java destinée à l'étude des performances backend. Quatre joueurs automatiques posent des pixels sur un board partagé, utilisent un stock rechargeable et déclenchent une passe de conversion par voisinage après leurs poses.
 
+La détection des conversions est désormais incrémentale : elle vérifie les cellules modifiées et leurs voisins directs, puis conserve les candidats issus des conversions pour la passe suivante. Les décisions restent simultanées, sans cascade dans la même action. Le fonctionnement et la validation sont décrits dans [docs/conversion-incrementale.md](docs/conversion-incrementale.md). Les descriptions de parcours global et les mesures ci-dessous correspondent à la baseline historique V2.
+
 Le périmètre et les règles sont décrits dans [docs/V2.md](docs/V2.md). Le moteur conserve une baseline simple : tableau Java 2D, verrou global, parcours complet pour les scores et pour les conversions, sans cache ni propagation jusqu'à stabilisation.
 
 ## Lancement

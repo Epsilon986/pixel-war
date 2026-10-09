@@ -2,11 +2,85 @@ package org.pixelwar.pixelwar.domain;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.Random;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class NeighborConversionTests {
     private final NeighborConversion conversion = new NeighborConversion();
+
+    @Test void sparseChangesQueueOnlyUniqueAffectedInteriorCells() {
+        var board = new Board(1000, 1000);
+        assertEquals(0, board.conversionCandidateCount());
+        board.place(500, 500, CellState.RED);
+        board.place(500, 500, CellState.BLUE);
+        board.place(500, 500, CellState.BLUE);
+        assertEquals(5, board.conversionCandidateCount());
+        conversion.convert(board);
+        assertEquals(0, board.conversionCandidateCount());
+        board.place(1, 0, CellState.RED);
+        assertEquals(1, board.conversionCandidateCount());
+        board.reset();
+        assertEquals(0, board.conversionCandidateCount());
+        assertTrue(conversion.convert(board).values().stream().allMatch(n -> n == 0));
+    }
+
+    @Test void repeatedDetectionDoesNotConsumeCandidatesAndBoardsRemainIndependent() {
+        var first = new Board(3, 3);
+        var second = new Board(3, 3);
+        surround(first, CellState.RED);
+        surround(second, CellState.BLUE);
+        var changes = conversion.detect(first);
+        assertEquals(1, changes.size());
+        assertEquals(changes, conversion.detect(first));
+        conversion.convert(second);
+        conversion.convert(first);
+        assertEquals(CellState.RED, first.get(1, 1));
+        assertEquals(CellState.BLUE, second.get(1, 1));
+    }
+
+    @Test void successivePassesWithoutPlacementsMatchFullScanIncludingOscillations() {
+        var incremental = checkerboard(11);
+        var reference = checkerboard(11);
+        for (int pass = 0; pass < 20; pass++) assertSamePass(reference, incremental);
+    }
+
+    @Test void randomizedMutationsAndResetsMatchFullScan() {
+        var random = new Random(20261009L);
+        for (int scenario = 0; scenario < 20; scenario++) {
+            int width = 1 + random.nextInt(18), height = 1 + random.nextInt(18);
+            var incremental = new Board(width, height);
+            var reference = new Board(width, height);
+            for (int pass = 0; pass < 100; pass++) {
+                if (pass % 29 == 0) { incremental.reset(); reference.reset(); }
+                for (int n = random.nextInt(30); n > 0; n--) {
+                    int x = random.nextInt(width), y = random.nextInt(height);
+                    var color = CellState.values()[1 + random.nextInt(4)];
+                    incremental.place(x, y, color);
+                    reference.place(x, y, color);
+                }
+                assertSamePass(reference, incremental);
+            }
+        }
+    }
+
+    private void assertSamePass(Board reference, Board incremental) {
+        var expected = new ArrayList<NeighborConversion.Change>();
+        for (int y = 1; y < reference.height() - 1; y++) for (int x = 1; x < reference.width() - 1; x++) {
+            var color = reference.get(x, y - 1);
+            if (color != CellState.EMPTY && reference.get(x, y) != color
+                    && reference.get(x, y + 1) == color && reference.get(x - 1, y) == color && reference.get(x + 1, y) == color) {
+                expected.add(new NeighborConversion.Change(x, y, color));
+            }
+        }
+        assertEquals(new HashSet<>(expected), new HashSet<>(conversion.detect(incremental)));
+        assertEquals(conversion.apply(reference, expected), conversion.convert(incremental));
+        assertEquals(reference.counts(), incremental.counts());
+        for (int y = 0; y < reference.height(); y++) for (int x = 0; x < reference.width(); x++) {
+            assertEquals(reference.get(x, y), incremental.get(x, y));
+        }
+    }
 
     static void surround(Board board, CellState color) {
         board.place(1, 0, color); board.place(1, 2, color);
