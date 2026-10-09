@@ -1,45 +1,57 @@
-# Pixel War
+# Pixel War — V2
 
-Simulation Java conçue pour étudier les performances backend. La V1 fournit une baseline volontairement simple, conforme à [la définition du projet](docs/Pixel%20War.md) et à [la spécification V1](docs/V1.md).
+Simulation Java destinée à l'étude des performances backend. Quatre joueurs automatiques posent des pixels sur un board partagé, utilisent un stock rechargeable et déclenchent une passe de conversion par voisinage après leurs poses.
 
-## Lancer le projet
+La détection des conversions est désormais incrémentale : elle vérifie les cellules modifiées et leurs voisins directs, puis conserve les candidats issus des conversions pour la passe suivante. Les décisions restent simultanées, sans cascade dans la même action. Le fonctionnement et la validation sont décrits dans [docs/conversion-incrementale.md](docs/conversion-incrementale.md). Les descriptions de parcours global et les mesures ci-dessous correspondent à la baseline historique V2.
 
-Prérequis : JDK 21 ou supérieur, `JAVA_HOME` configuré et accès Internet pour le premier téléchargement Maven. Aucun service externe ni base de données n'est nécessaire.
+Le périmètre et les règles sont décrits dans [docs/V2.md](docs/V2.md). Le moteur conserve une baseline simple : tableau Java 2D, verrou global, parcours complet pour les scores et pour les conversions, sans cache ni propagation jusqu'à stabilisation.
 
-Sous PowerShell :
+## Lancement
+
+Prérequis : JDK 21 ou supérieur, `JAVA_HOME` configuré. Le wrapper télécharge Maven et les dépendances au premier lancement. Aucun service externe ni base de données n'est nécessaire.
 
 ```powershell
 .\mvnw.cmd spring-boot:run
 ```
 
-Sous Linux/macOS : `./mvnw spring-boot:run`.
+Ouvrir http://localhost:8080 et cliquer sur **Start**. L'application commence dans l'état `STOPPED`.
 
-Ouvrir http://localhost:8080 puis cliquer sur **Start**. La simulation démarre dans l'état `STOPPED`. La page affiche l'aperçu, les scores, les compteurs, les latences et les métriques JVM. Elle interroge l'API toutes les secondes, après la fin du cycle précédent pour éviter l'accumulation des requêtes.
+Pour un petit board plus facile à remplir et à observer :
 
 ```powershell
-.\mvnw.cmd test
-.\mvnw.cmd package
-java -jar target/pixel-war-0.0.1-SNAPSHOT.jar
+.\mvnw.cmd spring-boot:run '-Dspring-boot.run.profiles=small'
 ```
+
+Tests et génération du JAR :
+
+```powershell
+.\mvnw.cmd verify
+java -Xmx1g -jar target/pixel-war-0.0.1-SNAPSHOT.jar
+```
+
+Sous Linux/macOS, remplacer `.\mvnw.cmd` par `./mvnw`.
 
 ## Configuration
 
-Les propriétés peuvent être modifiées dans `src/main/resources/application.properties`, par variables d'environnement Spring ou par arguments au démarrage, sans recompilation.
+Configurer les propriétés dans `src/main/resources/application.properties`, via les variables d'environnement Spring ou avec `--propriete=valeur` au démarrage du JAR. Elles sont validées avant allocation du board et ne sont pas modifiables à chaud.
 
 | Propriété | Défaut | Description |
 |---|---:|---|
 | `pixelwar.board.width` | 4000 | Largeur du board |
 | `pixelwar.board.height` | 4000 | Hauteur du board |
-| `pixelwar.players.interval-ns` | 1000 | Intervalle de chaque joueur en nanosecondes |
 | `pixelwar.preview.width` | 200 | Largeur maximale de l'aperçu |
 | `pixelwar.preview.height` | 200 | Hauteur maximale de l'aperçu |
+| `pixelwar.players.interval-ns` | 1000 | Intervalle entre actions de chaque joueur, en ns |
+| `pixelwar.players.max-pixels-per-action` | 10 | Limite des tentatives par action |
+| `pixelwar.stock.initial` | 100 | Pixels initiaux par joueur |
+| `pixelwar.stock.capacity` | 1000 | Capacité du stock |
+| `pixelwar.stock.refill-amount` | 100 | Pixels crédités par période |
+| `pixelwar.stock.refill-interval-ns` | 1000000 | Période de recharge en ns, soit 1 ms |
+| `pixelwar.conversion.enabled` | true | Activer la passe globale de voisinage |
 
-Toutes ces valeurs doivent être strictement positives. Une valeur invalide fait échouer le démarrage avec un message indiquant les propriétés concernées.
+Toutes les valeurs numériques doivent être positives, sauf le stock initial qui peut valoir zéro. Le stock initial et la limite de poses ne doivent pas dépasser la capacité. Les dimensions et les stocks initial/capacité utilisent des entiers Java `int` ; intervalles et montant de recharge utilisent `long`. Le booléen de conversion accepte `true` ou `false`. Une configuration invalide empêche le démarrage avec une erreur explicite.
 
-```powershell
-java -jar target/pixel-war-0.0.1-SNAPSHOT.jar --pixelwar.board.width=1000 --pixelwar.board.height=1000 --pixelwar.players.interval-ns=100
-java -jar target/pixel-war-0.0.1-SNAPSHOT.jar --spring.profiles.active=small
-```
+La propriété `pixelwar.players.interval-ms` est remplacée par `interval-ns` : 1 ms = 1 000 000 ns. Le scheduler vise la cadence demandée sans garantir une précision nanoseconde. La contention, la recharge et le coût du parcours de conversion limitent le débit réel.
 
 | Profil Spring | Board | Cellules |
 |---|---|---:|
@@ -48,26 +60,39 @@ java -jar target/pixel-war-0.0.1-SNAPSHOT.jar --spring.profiles.active=small
 | `stress` | 8000 × 8000 | 64 000 000 |
 | `extreme` | 12000 × 12000 | 144 000 000 |
 
-Les profils utilisent des noms minuscules. Adapter la heap avec `java -Xmx2g -jar ...` selon la machine et le profil. Le tableau contient une référence enum par cellule ; les parcours de statistiques génèrent aussi des allocations temporaires. Les grands profils peuvent épuiser la mémoire.
+Adapter la heap avec `-Xmx` selon le profil. Les grands profils ont volontairement une consommation mémoire et un coût de parcours élevés.
 
-## Règles et cycle de vie
+```powershell
+java -Xmx1g -jar target/pixel-war-0.0.1-SNAPSHOT.jar --spring.profiles.active=small --pixelwar.players.interval-ns=100 --pixelwar.stock.refill-amount=1000
+```
 
-Quatre joueurs fixes, rouge, bleu, vert et jaune, choisissent une cellule pseudo-aléatoire sur le board complet à chaque action. Une pose écrase la couleur précédente. Reposer la même couleur compte comme une tentative sans modification. Une tâche périodique par joueur s'exécute sur un pool de quatre threads ; les retards peuvent être rattrapés par le scheduler.
+Pour isoler le stock et les poses multiples des conversions : ajouter `--pixelwar.conversion.enabled=false`.
 
-Choix de la V1 pour les comportements non précisés :
+## Règles
 
-- Start depuis STOPPED conserve le board et les compteurs ; utiliser Reset pour une partie vide.
-- Pause conserve le board et gèle le temps actif ; Resume poursuit la simulation.
-- Stop conserve le board et les métriques, et annule les tâches des joueurs.
-- Reset arrête les joueurs, vide le board et remet les compteurs et latences à zéro.
-- Répéter Start en RUNNING, Pause en PAUSED, Resume en RUNNING ou Stop est sans effet supplémentaire. Pause depuis STOPPED, Resume depuis STOPPED et Start depuis PAUSED renvoient HTTP 409.
-- Le temps écoulé est le temps actif cumulé, hors pause et arrêt. Les débits sont des moyennes depuis le dernier reset sur ce temps actif.
-- La latence utilise `System.nanoTime()` et inclut l'attente du verrou ainsi que le choix de la position et la pose ; elle exclut l'attente entre deux actions.
-- L'aperçu sous-échantillonne les cellules à intervalles réguliers, sans agrégation. Il peut manquer des pixels, particulièrement au début sur un grand board. Ses dimensions sont limitées à celles du board.
+Chaque joueur possède une couleur stable : RED, BLUE, GREEN ou YELLOW. Une cellule non occupée vaut EMPTY. À chaque action, le joueur recharge son stock selon le temps actif puis tente `min(stock, max-pixels-per-action)` poses à des coordonnées indépendantes pseudo-aléatoires. Plusieurs poses peuvent viser la même cellule.
 
-Aucune victoire automatique, stock, conversion ou détection de patterns en V1. Les données restent en mémoire et sont perdues au redémarrage.
+Chaque tentative réussie consomme un pixel, même si la cellule a déjà la couleur du joueur. Une pose écrase une couleur adverse. Une action sans stock ne tire aucune coordonnée et ne lance pas de passe de conversion.
 
-## API
+La recharge est calculée au début de l'action. Les périodes complètes écoulées sont traitées ensemble ; la fraction restante est conservée. Les crédits dépassant la capacité sont perdus, sans réserve pour plus tard. Les compteurs de crédits utilisent `BigInteger` pour éviter un dépassement numérique après un très grand montant ou une longue durée. Une lecture HTTP n'effectue aucune recharge.
+
+Une fois toutes les poses terminées, la conversion parcourt les cellules intérieures du board. Une cellule vide ou adverse prend la couleur commune de ses quatre voisins directs non vides. Les diagonales, les bords et les coins sont exclus. Les conversions sont détectées avant toute application : une seule passe s'effectue, sans cascade pendant la même action. Une autre passe pourra convertir à nouveau des cellules lors d'une action ultérieure.
+
+Une conversion ne consomme ni ne crédite de stock. Elle est attribuée au joueur de la couleur obtenue, même si un autre joueur a déclenché l'action. Une action avec des poses sans changement direct déclenche tout de même la conversion.
+
+Le verrou global protège l'action entière et les lectures. Pause, Stop et Reset attendent sa fin, conversions comprises. Leurs réponses garantissent qu'aucune ancienne tâche ne modifie ensuite le board avant une reprise ou un nouveau démarrage autorisé. Une erreur inattendue arrête la simulation et conserve les poses déjà réalisées ; aucun rollback n'est introduit.
+
+## Cycle de vie
+
+- **Start** depuis STOPPED conserve le board, le stock, les échéances et les compteurs.
+- **Pause** conserve l'état et annule les tâches ; le temps de recharge est suspendu.
+- **Resume** reprend le temps actif et crée de nouvelles tâches sans rattraper le temps de pause.
+- **Stop** annule les tâches et conserve toutes les données pour consultation.
+- **Reset** vide le board, rétablit les stocks initiaux et remet les échéances, durées et compteurs à zéro.
+
+Start en RUNNING, Pause en PAUSED, Resume en RUNNING et Stop répété sont sans effet supplémentaire. Pause ou Resume depuis STOPPED et Start depuis PAUSED renvoient HTTP 409. Les données restent uniquement en mémoire ; il n'y a pas de victoire automatique.
+
+## API et métriques
 
 | Méthode | Route | Résultat |
 |---|---|---|
@@ -76,58 +101,64 @@ Aucune victoire automatique, stock, conversion ou détection de patterns en V1. 
 | POST | `/api/simulation/resume` | Reprise |
 | POST | `/api/simulation/stop` | Arrêt |
 | POST | `/api/simulation/reset` | Réinitialisation |
-| GET | `/api/simulation` | État, temps actif en ms, configuration, tentatives, modifications |
-| GET | `/api/simulation/scores` | Joueurs, cellules possédées, pourcentage |
-| GET | `/api/metrics` | Débits, latences en ns, compteurs par joueur, heap en octets, threads, CPU, cellules par couleur |
-| GET | `/api/board/preview` | Dimensions et tableau de couleurs `cells[y][x]` |
+| GET | `/api/simulation` | État, configuration, temps actif, compteurs et stocks |
+| GET | `/api/simulation/scores` | Cellules possédées et pourcentage par joueur |
+| GET | `/api/metrics` | Métriques applicatives, JVM et board |
+| GET | `/api/board/preview` | Dimensions et couleurs `cells[y][x]` |
 | GET | `/health` | `OK` |
 
-Les commandes ne nécessitent pas de corps et renvoient l'état courant. La charge CPU est un ratio entre 0 et 1, ou `null` si indisponible ; ce n'est pas un pourcentage. Les états métier sont `EMPTY`, `RED`, `BLUE`, `GREEN`, `YELLOW`.
+Les commandes n'ont pas de corps et renvoient l'état courant. Les erreurs de transition renvoient `{"error":"..."}`. La configuration expose `intervalNs`, `stock`, `maxPixelsPerAction` et `conversionEnabled`. `players` dans l'état expose `{player, stock, stockCapacity}`.
 
 ```powershell
 Invoke-RestMethod -Method Post http://localhost:8080/api/simulation/start
 Invoke-RestMethod http://localhost:8080/api/metrics
-Invoke-RestMethod -Method Post http://localhost:8080/api/simulation/pause
 ```
 
-Chaque réponse est cohérente au moment de sa lecture. Les différents endpoints interrogés par le navigateur peuvent représenter des instants légèrement différents.
+Les compteurs conservent une distinction claire :
 
-## Architecture et tests
+- `attempts` : tentatives de pose ; `modifications` : changements directs dus aux poses ;
+- `actions`, `actionsWithoutStock`, `averagePixelsPerAction` : cycles, cycles vides et nombre moyen de tentatives ;
+- `pixelsConsumed`, `pixelsRefilled`, `pixelsDiscardedAtCapacity` : stock dépensé, réellement crédité et crédits perdus ;
+- `conversionPasses`, `conversions`, `conversionsReceived` par joueur : passes, changements par voisinage et attribution ;
+- `boardChanges` : modifications directes + conversions, y compris deux changements de la même cellule pendant une action.
 
-- `domain/Board` : tableau `CellState[][]`, lecture, écriture, parcours complet pour les scores et sous-échantillonnage.
-- `domain/Simulation` : joueurs, scheduler, cycle de vie et métriques, indépendant de Spring et HTTP.
-- `PixelWarConfiguration` : configuration externe et validation avant allocation.
-- `SimulationController` : API REST et erreurs de transition.
-- `static/` : page HTML, CSS et JavaScript sans framework.
+Les débits sont des moyennes sur le temps actif depuis le reset, hors pause et arrêt. La latence mesure désormais **l'action entière**, attente du verrou, recharge et conversions comprises : elle n'est plus une durée par pixel comme dans la V1. `conversionDurationNanos` expose total, moyenne, minimum et maximum des passes, hors attente initiale du verrou. Toutes ces durées sont en ns, sauf `elapsedMs`. La heap est en octets. La charge CPU est un ratio entre 0 et 1, ou `null` si indisponible.
 
-Le moteur protège toutes ses opérations par un verrou global ; le board protège également ses propres accès. Une pause ou un reset attend la fin de la pose en cours avant de retourner. Les tâches d'un ancien démarrage sont identifiées pour empêcher une pose tardive après un redémarrage. Les scores et statistiques parcourent le board sous verrou, ce qui provoque volontairement de la contention. Aucun cache ni compteur incrémental des scores n'est introduit.
+Le front effectue un cycle de polling une seconde après le précédent, sans accumulation des lectures. Les différents endpoints peuvent représenter des instants légèrement différents. L'aperçu est un sous-échantillonnage, pas une agrégation ; il peut manquer des pixels. Les très grands compteurs JSON peuvent perdre de la précision d'affichage dans JavaScript au-delà de `Number.MAX_SAFE_INTEGER` ; les compteurs de crédit côté moteur restent exacts.
 
-Les tests utilisent de petits boards. Ils couvrent les limites, l'écrasement, les poses sans changement, le reset, les scores, l'aperçu, les transitions, les compteurs, le gel de l'activité, la validation de configuration et les endpoints REST.
+## Architecture et validation
 
-## Mesurer la baseline
+- `domain/Board` : tableau 2D, poses, scores et aperçu.
+- `domain/Stock` : recharge, capacité et consommation selon le temps actif.
+- `domain/NeighborConversion` : détection puis application d'une passe globale.
+- `domain/PositionStrategy` : sélection aléatoire, injectable pour les tests.
+- `domain/Simulation` : scheduler, cycle de vie, verrou et métriques ; horloge injectable.
+- `PixelWarConfiguration` et `SimulationController` : configuration Spring et API.
+- `static/` : HTML, CSS et JavaScript sans framework.
 
-Conserver la même JVM, heap, configuration, durée et fréquence de polling pour comparer deux versions. Faire une phase de chauffe avant les mesures. Relever les débits, latences et heap avec et sans navigateur : les parcours globaux de scores et métriques participent à la charge.
+Les tests utilisent des petits boards. Ils couvrent les limites, les écrasements, l'aperçu, les échéances de recharge, les grandes valeurs, les invariants de stock, les poses multiples, l'absence de cascade, l'attribution des conversions, les transitions et le rejet des anciennes tâches. Les tests HTTP vérifient aussi les stocks, un score et un aperçu après conversion déterministe.
 
-Pour mesurer le coût HTTP d'un parcours complet (application lancée, board DEFAULT) :
+## Mesurer la V2
+
+Le script Windows [scripts/benchmark-v2.ps1](scripts/benchmark-v2.ps1) lance une JVM locale par scénario, chauffe le moteur et mesure les deltas de compteurs sur un temps actif documenté. Il compare actions simples/multiples, recharge limitante et conversions, avec ou sans requêtes de polling. Le polling reproduit les quatre lectures du front en séquence, sans rendu navigateur ; il ne constitue pas une mesure de l'interface complète.
 
 ```powershell
-1..10 | ForEach-Object { (Measure-Command { Invoke-RestMethod http://localhost:8080/api/simulation/scores | Out-Null }).TotalMilliseconds }
+.\mvnw.cmd package
+.\scripts\benchmark-v2.ps1 -Java 'java' -BoardSize 500 -WarmupSeconds 3 -MeasureSeconds 5
 ```
 
-Cette mesure inclut HTTP et sérialisation, et ne constitue pas un microbenchmark de la méthode Java.
+Résultats JSON et logs dans `target/`. Le script lance des processus cachés et arrête uniquement les JVM qu'il a lui-même créées. Un serveur existant ne doit pas utiliser le port choisi (18082 par défaut).
 
-Pour enregistrer un profil JFR avec les outils du JDK :
+Pour un profil JFR :
 
 ```powershell
-java -XX:StartFlightRecording=filename=target/pixelwar-v1.jfr,duration=60s,settings=profile -jar target/pixel-war-0.0.1-SNAPSHOT.jar
+java -Xmx1g -XX:StartFlightRecording=filename=target/pixelwar-v2.jfr,duration=60s,settings=profile -jar target/pixel-war-0.0.1-SNAPSHOT.jar --spring.profiles.active=small
 ```
 
-Pendant l'enregistrement, démarrer la simulation et consulter le front. Ouvrir le fichier dans IntelliJ (selon édition) ou JDK Mission Control. Examiner les allocations de `Board.counts`, les parcours complets et l'attente des moniteurs. Après identification d'un point chaud, un microbenchmark JMH pourra isoler son coût dans une itération ultérieure.
+Démarrer la simulation pendant l'enregistrement. Ouvrir le fichier dans IntelliJ ou JDK Mission Control ; examiner le parcours de conversion, les allocations des statistiques et les attentes du moniteur. Les passes globales peuvent fortement ralentir le board DEFAULT même avec une cadence en nanosecondes. Pour observer une partie plus rapidement, utiliser SMALL ou désactiver la conversion lors d'un essai de charge des poses.
 
-L'intervalle est désormais configuré avec `pixelwar.players.interval-ns` ; l'ancienne propriété `interval-ms` doit être remplacée. Conversion : 1 ms = 1 000 000 ns. L'API expose `intervalNs` pour la configuration et chaque joueur. Le défaut de 1 000 ns (1 µs) vise une charge élevée ; utiliser 10 000 000 ns pour retrouver le rythme initial de 10 ms. Pour augmenter davantage la charge, essayer 100 ns ou 1 ns.
+Les mesures et leurs limites sont consignées dans [docs/V2-baseline.md](docs/V2-baseline.md). Aucun gain de performance n'est revendiqué et aucun mécanisme de conversion incrémentale, de pattern ou de propagation jusqu'à stabilisation n'est ajouté.
 
-Les nanosecondes expriment la cadence demandée au scheduler, sans garantie de précision à cette échelle. Le débit réel dépend du coût des actions, de la contention, du scheduler, du GC et du polling. Une cadence très courte fait travailler les joueurs en continu lorsque le scheduler est en retard. Pause et Stop annulent les tâches ; Resume crée de nouvelles tâches sans rattraper la durée passée en pause.
+Le programme `java -Xmx1g --class-path target/classes scripts/ConversionProbe.java` mesure une passe sur un board préparé avec des motifs convertibles. Ce relevé exploratoire complète la simulation aléatoire ; ce n'est pas un microbenchmark JMH.
 
-Un contrôle exploratoire avec le défaut de 1 000 ns, un board 4000 × 4000 et une heap de 1 Gio sous JDK 25 a produit environ 5,2 millions de tentatives en 3,12 secondes (1,67 million/s), avec 4,44 millions de cellules occupées. Ce relevé court sans polling navigateur confirme l'accélération sur la machine de développement ; il ne garantit pas ce débit sur une autre machine.
-
-Une [première observation de la V1](docs/V1-baseline.md) consigne les mesures HTTP et les constats JFR effectués sur la machine de développement, ainsi que leurs limites.
+Le script optionnel `node scripts/browser-smoke.mjs http://localhost:8080` vérifie les commandes et le rendu desktop/mobile si un Chrome headless avec un profil isolé expose son endpoint DevTools sur le port 19222. Il nécessite Node.js récent, sans dépendance npm. Les captures sont écrites dans `target/`.
