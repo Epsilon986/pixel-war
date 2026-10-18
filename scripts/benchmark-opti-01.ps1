@@ -13,8 +13,7 @@ param(
 $ErrorActionPreference = 'Stop'
 if ($EnginePairs -lt 5 -or $ApplicationPairs -lt 3 -or $ApplicationSeconds -lt 20) { throw 'Minimum: 5 engine pairs, 3 application pairs, 20 second windows.' }
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$results = [IO.Path]::GetFullPath((Join-Path $repo $ResultsDir))
-if ([IO.Path]::IsPathRooted($ResultsDir)) { $results = [IO.Path]::GetFullPath($ResultsDir) }
+$results = if ([IO.Path]::IsPathRooted($ResultsDir)) { [IO.Path]::GetFullPath($ResultsDir) } else { [IO.Path]::GetFullPath((Join-Path $repo $ResultsDir)) }
 $javaPath = (Get-Command $Java -ErrorAction Stop).Source
 $jdkBin = Split-Path -Parent $javaPath
 $env:JAVA_HOME = Split-Path -Parent $jdkBin
