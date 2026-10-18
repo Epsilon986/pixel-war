@@ -22,7 +22,10 @@ foreach ($dir in @('raw','logs','profiles','builds')) { New-Item -ItemType Direc
 $environment = [ordered]@{StartedUtc=[DateTime]::UtcNow.ToString('o'); Before=$BeforeRef; After=$AfterRef; Java=$javaPath; Flags=$flags; EnginePairs=$EnginePairs; ApplicationPairs=$ApplicationPairs; ApplicationSeconds=$ApplicationSeconds; ApplicationWarmupSeconds=$ApplicationWarmupSeconds; EngineWarmupSeconds=3; HeapSamplePeriodMs=10; PerformanceSeed=11; ReplaySeeds=@(11,22,33); PollEndpoints=@('/api/simulation','/api/simulation/scores','/api/performance','/api/board/preview'); PollPeriodMs=1000; PreviewWidth=500; PreviewHeight=500; Cpu=(Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores,NumberOfLogicalProcessors,L2CacheSize,L3CacheSize); Computer=(Get-CimInstance Win32_ComputerSystem | Select-Object TotalPhysicalMemory); Os=(Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,OSArchitecture)}
 $environment | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $results 'environment.json')
 $environment | ConvertTo-Json -Depth 8 -Compress | Add-Content -Encoding UTF8 -LiteralPath (Join-Path $results 'invocations.jsonl')
+$savedErrorPreference = $ErrorActionPreference
+$ErrorActionPreference = 'Continue' # java -version intentionally writes its version to stderr on Windows PowerShell.
 & $javaPath -version 2> (Join-Path $results 'java-version.txt')
+$ErrorActionPreference = $savedErrorPreference
 $versions = @{}
 
 function Prepare-Version([string]$Label, [string]$Reference) {
@@ -80,8 +83,12 @@ function Run-Engine([string]$Label,[int]$Size,[string]$Initial,[long]$Seed,[long
     $profile = if ($Mode -eq 'profile') { Join-Path $results "profiles/$id.jfr" } else { 'none' }
     $v = $versions[$Label]
     $arguments = $flags + @(('-javaagent:' + $v.agent),'--class-path',$v.cp,'org.pixelwar.pixelwar.domain.BoardExperiment',$Mode,"$Size",$Initial,"$Seed","$Budget",$Warmup.ToString([Globalization.CultureInfo]::InvariantCulture),$output,$profile)
+    $savedErrorPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     & $javaPath @arguments > (Join-Path $results "logs/$id.log") 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "Engine trial failed: $id (failure preserved in logs)." }
+    $nativeExit = $LASTEXITCODE
+    $ErrorActionPreference = $savedErrorPreference
+    if ($nativeExit -ne 0) { throw "Engine trial failed: $id (failure preserved in logs)." }
     Stamp-Result $output $Label $id $Order
 }
 
