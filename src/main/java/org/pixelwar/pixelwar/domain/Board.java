@@ -9,7 +9,9 @@ import java.util.random.RandomGenerator;
 
 /** Coordinates are (x, y), storage is cells[y][x]. Tracks conversion candidates on mutations. */
 public final class Board {
-    private final CellState[][] cells;
+    // Stable wire-independent codes. Only these five values can enter the array.
+    private static final CellState[] COLORS = {CellState.EMPTY, CellState.RED, CellState.BLUE, CellState.GREEN, CellState.YELLOW};
+    private final byte[] cells;
     private final int width;
     private final int height;
     private final EnumMap<CellState, Long> totals = new EnumMap<>(CellState.class);
@@ -25,10 +27,13 @@ public final class Board {
 
     public Board(int width, int height) {
         if (width <= 0 || height <= 0) throw new IllegalArgumentException("Board dimensions must be positive");
+        long total = (long) width * height;
+        if (total > Integer.MAX_VALUE) throw new ArithmeticException("Board cell count exceeds int indexing");
+        // JVM array-size limits and available heap can still reject a valid int-sized allocation.
         this.width = width;
         this.height = height;
-        cells = new CellState[height][width];
-        emptyCells = new int[Math.multiplyExact(width, height)];
+        cells = new byte[(int) total];
+        emptyCells = new int[(int) total];
         emptySlots = new int[emptyCells.length];
         conversionCandidates = new long[(int) (((long) emptyCells.length + 63) / 64)];
         for (int i = 0; i < frontiers.length; i++) frontiers[i] = new FrontierIndex(emptyCells.length);
@@ -41,16 +46,19 @@ public final class Board {
 
     public synchronized CellState get(int x, int y) {
         check(x, y);
-        return cells[y][x];
+        return COLORS[cells[y * width + x]];
     }
 
     public synchronized boolean place(int x, int y, CellState color) {
         check(x, y);
         Objects.requireNonNull(color, "color");
         if (color == CellState.EMPTY) throw new IllegalArgumentException("Player color must not be EMPTY");
-        boolean changed = cells[y][x] != color;
+        int cellId = y * width + x;
+        byte next = code(color);
+        byte previous = cells[cellId];
+        boolean changed = previous != next;
         if (changed) {
-            if (cells[y][x] == CellState.EMPTY) {
+            if (previous == 0) {
                 int id = y * width + x;
                 int slot = emptySlots[id];
                 int last = emptyCells[--emptyCount];
@@ -58,10 +66,10 @@ public final class Board {
                 emptySlots[last] = slot;
                 emptySlots[id] = -1;
             }
-            totals.put(cells[y][x], totals.get(cells[y][x]) - 1);
+            totals.put(COLORS[previous], totals.get(COLORS[previous]) - 1);
             totals.put(color, totals.get(color) + 1);
         }
-        cells[y][x] = color;
+        cells[cellId] = next;
         if (changed) {
             markConversionCandidate(x, y);
             markConversionCandidate(x - 1, y);
@@ -80,14 +88,25 @@ public final class Board {
         return changed;
     }
 
+    private static byte code(CellState color) {
+        return switch (color) {
+            case EMPTY -> 0;
+            case RED -> 1;
+            case BLUE -> 2;
+            case GREEN -> 3;
+            case YELLOW -> 4;
+        };
+    }
+
     private void updateFrontiers(int x, int y) {
         if (x < 0 || x >= width || y < 0 || y >= height) return;
+        int id = y * width + x;
         int neighbors = 0;
-        if (x > 0) neighbors |= 1 << cells[y][x - 1].ordinal();
-        if (x + 1 < width) neighbors |= 1 << cells[y][x + 1].ordinal();
-        if (y > 0) neighbors |= 1 << cells[y - 1][x].ordinal();
-        if (y + 1 < height) neighbors |= 1 << cells[y + 1][x].ordinal();
-        int ownColor = cells[y][x].ordinal(), id = y * width + x;
+        if (x > 0) neighbors |= 1 << cells[id - 1];
+        if (x + 1 < width) neighbors |= 1 << cells[id + 1];
+        if (y > 0) neighbors |= 1 << cells[id - width];
+        if (y + 1 < height) neighbors |= 1 << cells[id + width];
+        int ownColor = cells[id];
         for (int i = 0; i < frontiers.length; i++) {
             frontiers[i].update(id, ownColor != i + 1 && (neighbors & (1 << (i + 1))) != 0);
         }
@@ -149,7 +168,7 @@ public final class Board {
         clearConversionCandidates();
         for (var frontier : frontiers) frontier.reset();
         frontierUpdates = frontierMaintenanceNanos = 0;
-        for (CellState[] row : cells) Arrays.fill(row, CellState.EMPTY);
+        Arrays.fill(cells, (byte) 0);
         for (var color : CellState.values()) totals.put(color, 0L);
         totals.put(CellState.EMPTY, totalCells());
         emptyCount = emptyCells.length;
@@ -169,7 +188,7 @@ public final class Board {
         check(x, y);
         Objects.requireNonNull(color, "color");
         if (color == CellState.EMPTY) throw new IllegalArgumentException("Player color must not be EMPTY");
-        return cells[y][x] == CellState.EMPTY && place(x, y, color);
+        return cells[y * width + x] == 0 && place(x, y, color);
     }
 
     /** Players may conquer opponents while empty cells remain; allied cells are no-ops. */
@@ -177,7 +196,7 @@ public final class Board {
         check(x, y);
         Objects.requireNonNull(color, "color");
         if (color == CellState.EMPTY) throw new IllegalArgumentException("Player color must not be EMPTY");
-        if (cells[y][x] == color) return false;
+        if (cells[y * width + x] == code(color)) return false;
         return place(x, y, color);
     }
 
@@ -192,7 +211,9 @@ public final class Board {
         int h = Math.min(height, requestedHeight);
         var preview = new CellState[h][w];
         for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
-            preview[y][x] = cells[(int) ((long) y * height / h)][(int) ((long) x * width / w)];
+            int sourceY = (int) ((long) y * height / h);
+            int sourceX = (int) ((long) x * width / w);
+            preview[y][x] = COLORS[cells[sourceY * width + sourceX]];
         }
         return preview;
     }
