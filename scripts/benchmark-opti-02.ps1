@@ -151,6 +151,7 @@ function Run-Application([string]$Label,[int]$Size,[int]$Pair,[int]$Order,[bool]
         $requests = [Collections.Generic.List[object]]::new()
         $watch = [Diagnostics.Stopwatch]::StartNew(); $nextPoll=0.0
         Invoke-RestMethod "$root/api/simulation/resume" -Method Post | Out-Null
+        $watch.Restart() # Ensure the requested window starts after resume has returned.
         while ($watch.Elapsed.TotalSeconds -lt $ApplicationSeconds) {
             $endpoints = if ($Polling) { $environment.PollEndpoints } else { @() }
             $tasks = @($endpoints | ForEach-Object { [Opti02Poller]::Read($client,$root,$_) })
