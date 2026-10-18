@@ -5,6 +5,7 @@ import java.util.EnumMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.random.RandomGenerator;
 
 /** Coordinates are (x, y), storage is cells[y][x]. Tracks conversion candidates on mutations. */
 public final class Board {
@@ -17,6 +18,10 @@ public final class Board {
     private final long[] conversionCandidates;
     private int[] candidateIds = new int[16];
     private int candidateCount;
+    private final FrontierIndex[] frontiers = new FrontierIndex[4];
+    private long frontierUpdates, frontierMaintenanceNanos;
+    public record FrontierMetrics(Map<CellState, Integer> sizes, long updates, long totalNanos,
+                                  double averageNanos, long storageBytes) {}
 
     public Board(int width, int height) {
         if (width <= 0 || height <= 0) throw new IllegalArgumentException("Board dimensions must be positive");
@@ -26,6 +31,7 @@ public final class Board {
         emptyCells = new int[Math.multiplyExact(width, height)];
         emptySlots = new int[emptyCells.length];
         conversionCandidates = new long[(int) (((long) emptyCells.length + 63) / 64)];
+        for (int i = 0; i < frontiers.length; i++) frontiers[i] = new FrontierIndex(emptyCells.length);
         reset();
     }
 
@@ -62,8 +68,56 @@ public final class Board {
             markConversionCandidate(x + 1, y);
             markConversionCandidate(x, y - 1);
             markConversionCandidate(x, y + 1);
+            long before = System.nanoTime();
+            updateFrontiers(x, y);
+            updateFrontiers(x - 1, y);
+            updateFrontiers(x + 1, y);
+            updateFrontiers(x, y - 1);
+            updateFrontiers(x, y + 1);
+            frontierUpdates++;
+            frontierMaintenanceNanos += System.nanoTime() - before;
         }
         return changed;
+    }
+
+    private void updateFrontiers(int x, int y) {
+        if (x < 0 || x >= width || y < 0 || y >= height) return;
+        int neighbors = 0;
+        if (x > 0) neighbors |= 1 << cells[y][x - 1].ordinal();
+        if (x + 1 < width) neighbors |= 1 << cells[y][x + 1].ordinal();
+        if (y > 0) neighbors |= 1 << cells[y - 1][x].ordinal();
+        if (y + 1 < height) neighbors |= 1 << cells[y + 1][x].ordinal();
+        int ownColor = cells[y][x].ordinal(), id = y * width + x;
+        for (int i = 0; i < frontiers.length; i++) {
+            frontiers[i].update(id, ownColor != i + 1 && (neighbors & (1 << (i + 1))) != 0);
+        }
+    }
+
+    private FrontierIndex frontier(CellState color) {
+        if (color == null || color == CellState.EMPTY) throw new IllegalArgumentException("Frontier requires a player color");
+        return frontiers[color.ordinal() - 1];
+    }
+    public synchronized int frontierSize(CellState color) { return frontier(color).size(); }
+    public synchronized boolean isFrontier(int x, int y, CellState color) {
+        check(x, y);
+        return frontier(color).contains(y * width + x);
+    }
+    public synchronized PlacementStrategy.Position randomFrontierPosition(CellState color, RandomGenerator random) {
+        var frontier = frontier(color);
+        if (frontier.size() == 0) return null;
+        int id = frontier.randomId(random);
+        return new PlacementStrategy.Position(id % width, id / width);
+    }
+    public synchronized FrontierMetrics frontierMetrics() {
+        var sizes = new EnumMap<CellState, Integer>(CellState.class);
+        long bytes = 0;
+        for (var color : CellState.values()) if (color != CellState.EMPTY) {
+            var frontier = frontier(color);
+            sizes.put(color, frontier.size());
+            bytes += frontier.storageBytes();
+        }
+        return new FrontierMetrics(Map.copyOf(sizes), frontierUpdates, frontierMaintenanceNanos,
+                frontierUpdates == 0 ? 0 : (double) frontierMaintenanceNanos / frontierUpdates, bytes);
     }
 
     private void markConversionCandidate(int x, int y) {
@@ -93,6 +147,8 @@ public final class Board {
 
     public synchronized void reset() {
         clearConversionCandidates();
+        for (var frontier : frontiers) frontier.reset();
+        frontierUpdates = frontierMaintenanceNanos = 0;
         for (CellState[] row : cells) Arrays.fill(row, CellState.EMPTY);
         for (var color : CellState.values()) totals.put(color, 0L);
         totals.put(CellState.EMPTY, totalCells());
@@ -101,8 +157,11 @@ public final class Board {
     }
 
     public synchronized PositionStrategy.Position randomEmptyPosition() {
+        return randomEmptyPosition(ThreadLocalRandom.current());
+    }
+    public synchronized PlacementStrategy.Position randomEmptyPosition(RandomGenerator random) {
         if (emptyCount == 0) return null;
-        int id = emptyCells[ThreadLocalRandom.current().nextInt(emptyCount)];
+        int id = emptyCells[random.nextInt(emptyCount)];
         return new PositionStrategy.Position(id % width, id / width);
     }
 
@@ -113,19 +172,19 @@ public final class Board {
         return cells[y][x] == CellState.EMPTY && place(x, y, color);
     }
 
-    /** Players may replace opponents only once no empty cell remains. */
+    /** Players may conquer opponents while empty cells remain; allied cells are no-ops. */
     public synchronized boolean placeForPlayer(int x, int y, CellState color) {
         check(x, y);
         Objects.requireNonNull(color, "color");
         if (color == CellState.EMPTY) throw new IllegalArgumentException("Player color must not be EMPTY");
         if (cells[y][x] == color) return false;
-        if (cells[y][x] != CellState.EMPTY && totals.get(CellState.EMPTY) > 0) return false;
         return place(x, y, color);
     }
 
     public synchronized Map<CellState, Long> counts() {
         return new EnumMap<>(totals);
     }
+    public synchronized long cellCount(CellState color) { return totals.get(Objects.requireNonNull(color)); }
 
     public synchronized CellState[][] preview(int requestedWidth, int requestedHeight) {
         if (requestedWidth <= 0 || requestedHeight <= 0) throw new IllegalArgumentException("Preview dimensions must be positive");

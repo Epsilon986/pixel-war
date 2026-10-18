@@ -2,16 +2,11 @@ package org.pixelwar.pixelwar.domain;
 
 import java.util.concurrent.ThreadLocalRandom;
 
+/** Compatibility alias for deterministic V2 fixtures; new strategies implement PlacementStrategy. */
 @FunctionalInterface
-public interface PositionStrategy {
-    record Position(int x, int y) {}
-    Position choose(Board board, Simulation.Player player);
+public interface PositionStrategy extends PlacementStrategy {
 
     static PositionStrategy random() {
-        return (board, player) -> {
-            var empty = board.randomEmptyPosition();
-            return empty != null ? empty : new Position(ThreadLocalRandom.current().nextInt(board.width()),
-                    ThreadLocalRandom.current().nextInt(board.height()));
-        };
+        return new RandomPlacementStrategy(ThreadLocalRandom.current())::choose;
     }
 }

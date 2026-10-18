@@ -24,19 +24,22 @@ class BoardTests {
         }
         assertNull(board.randomEmptyPosition());
     }
-    @Test void playerCanReplaceOpponentOnlyAfterLastEmptyCellIsFilled() {
-        var board = new Board(2, 1);
+    @Test void playerCanConquerOpponentWhileEmptyCellsRemainAndAfterReset() {
+        var board = new Board(3, 1);
         assertTrue(board.placeForPlayer(0, 0, CellState.BLUE));
-        assertFalse(board.placeForPlayer(0, 0, CellState.RED));
         assertTrue(board.placeForPlayer(1, 0, CellState.RED));
         assertFalse(board.placeForPlayer(1, 0, CellState.RED));
         assertTrue(board.placeForPlayer(0, 0, CellState.RED));
         assertEquals(2L, board.counts().get(CellState.RED));
         assertEquals(0L, board.counts().get(CellState.BLUE));
-        assertEquals(0L, board.counts().get(CellState.EMPTY));
+        assertEquals(1L, board.counts().get(CellState.EMPTY));
+        assertEquals(new PlacementStrategy.Position(2, 0), board.randomEmptyPosition());
+        assertFalse(board.isFrontier(0, 0, CellState.RED));
+        assertTrue(board.isFrontier(2, 0, CellState.RED));
         board.reset();
         assertTrue(board.placeForPlayer(0, 0, CellState.BLUE));
-        assertFalse(board.placeForPlayer(0, 0, CellState.RED));
+        assertTrue(board.placeForPlayer(0, 0, CellState.RED));
+        assertEquals(2L, board.counts().get(CellState.EMPTY));
     }
     @Test void emptyOnlyPlacementPreservesOccupiedCellsAndCounts() {
         var board = new Board(2, 2);

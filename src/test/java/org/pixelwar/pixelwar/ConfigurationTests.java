@@ -5,6 +5,23 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ConfigurationTests {
+    @Test void strategyConfigurationIsExposedAndReferenceModeIsAvailable() {
+        for (var strategy : new String[]{"frontier", "random"}) {
+            new ApplicationContextRunner().withUserConfiguration(PixelWarConfiguration.class)
+                    .withPropertyValues("pixelwar.board.width=2", "pixelwar.board.height=2", "pixelwar.players.strategy=" + strategy,
+                            "pixelwar.players.exploration-probability=0.25", "pixelwar.players.frontier-sample-size=7",
+                            "pixelwar.players.weak-opponent-bonus=12", "pixelwar.players.target-hold-actions=30")
+                    .run(context -> {
+                        assertNull(context.getStartupFailure());
+                        var config = context.getBean(org.pixelwar.pixelwar.domain.Simulation.class).status().configuration();
+                        assertEquals(strategy, config.strategy());
+                        assertEquals(0.25, config.explorationProbability());
+                        assertEquals(7, config.frontierSampleSize());
+                        assertEquals(12, config.weakOpponentBonus());
+                        assertEquals(30, config.targetHoldActions());
+                    });
+        }
+    }
     @Test void stockCanBeDisabledByProperty() {
         new ApplicationContextRunner().withUserConfiguration(PixelWarConfiguration.class)
                 .withPropertyValues("pixelwar.board.width=2", "pixelwar.board.height=2", "pixelwar.stock.enabled=false")
@@ -18,7 +35,12 @@ class ConfigurationTests {
                 "pixelwar.preview.width=0", "pixelwar.stock.initial=-1", "pixelwar.stock.initial=1001", "pixelwar.stock.capacity=0",
                 "pixelwar.stock.refill-amount=0", "pixelwar.stock.refill-interval-ns=0", "pixelwar.players.max-pixels-per-action=0",
                 "pixelwar.players.max-pixels-per-action=1001", "pixelwar.conversion.enabled=perhaps", "pixelwar.stock.enabled=perhaps",
-                "pixelwar.stock.capacity=99999999999999999999", "pixelwar.stock.refill-amount=99999999999999999999"}) {
+                "pixelwar.stock.capacity=99999999999999999999", "pixelwar.stock.refill-amount=99999999999999999999",
+                "pixelwar.players.strategy=unknown", "pixelwar.players.exploration-probability=-0.1",
+                "pixelwar.players.exploration-probability=1.1", "pixelwar.players.exploration-probability=NaN",
+                "pixelwar.players.exploration-probability=Infinity", "pixelwar.players.frontier-sample-size=0",
+                "pixelwar.players.weak-opponent-bonus=-1", "pixelwar.players.weak-opponent-bonus=1000001",
+                "pixelwar.players.target-hold-actions=0"}) {
             new ApplicationContextRunner().withUserConfiguration(PixelWarConfiguration.class)
                     .withPropertyValues("pixelwar.board.width=2", "pixelwar.board.height=2", property)
                     .run(context -> assertNotNull(context.getStartupFailure(), property));

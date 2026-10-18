@@ -15,6 +15,59 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class SimulationTests {
+    @Test void strategyActionHookRunsOnceForMultiplePosesAndResetClearsItsState() {
+        var strategy = mock(PlacementStrategy.class);
+        when(strategy.choose(any(), any())).thenReturn(new PlacementStrategy.Position(0, 0));
+        var board = new Board(5, 5);
+        try (var fixture = fixture(board, 7, 4, false, strategy)) {
+            fixture.simulation().start(); fixture.action(0);
+            verify(strategy, times(1)).beginAction(eq(board), any());
+            verify(strategy, times(4)).choose(eq(board), any());
+            fixture.simulation().reset();
+            verify(strategy).reset(board);
+        }
+    }
+    @Test void frontierConquestStartsBeforeBoardIsFullAndDebitsOnlyTheConquest() {
+        var board = new Board(3, 1);
+        board.place(0, 0, CellState.RED);
+        board.place(1, 0, CellState.BLUE);
+        try (var fixture = fixture(board, 7, 1, false, new FrontierPlacementStrategy(new java.util.Random(42), 0, 10))) {
+            fixture.simulation().start(); fixture.action(0);
+            assertEquals(CellState.RED, board.get(1, 0));
+            assertEquals(1L, board.counts().get(CellState.EMPTY));
+            assertEquals(1, fixture.simulation().status().modifications());
+            assertEquals(BigInteger.ONE, fixture.simulation().metrics().pixelsConsumed());
+            assertTrue(fixture.simulation().status().players().get(1).eliminated());
+            fixture.action(1);
+            assertEquals(1, fixture.simulation().status().attempts());
+        }
+    }
+    @Test void frontierPosesUseUpdatedFrontiersWithinOneActionAndDebitOnlyChanges() {
+        var board = new Board(15, 15);
+        board.place(7, 7, CellState.RED);
+        try (var fixture = fixture(board, 7, 4, false, new FrontierPlacementStrategy(new java.util.Random(123), 0, 10))) {
+            fixture.simulation().start();
+            fixture.action(0);
+            assertEquals(4, fixture.simulation().status().attempts());
+            assertEquals(4, fixture.simulation().status().modifications());
+            assertEquals(3, fixture.simulation().status().players().getFirst().stock());
+            assertEquals(5L, board.counts().get(CellState.RED));
+            assertEquals(5, board.frontierMetrics().updates());
+            fixture.simulation().reset();
+            assertEquals(0, board.frontierSize(CellState.RED));
+            assertEquals(0, board.frontierMetrics().updates());
+        }
+    }
+
+    @Test void emptyStockSkipsFrontierSelectionAndConversions() {
+        var strategy = mock(PlacementStrategy.class);
+        try (var fixture = fixture(new Board(5, 5), 0, 4, true, strategy)) {
+            fixture.simulation().start(); fixture.action(0);
+            verifyNoInteractions(strategy);
+            assertEquals(1, fixture.simulation().metrics().actionsWithoutStock());
+            assertEquals(0, fixture.simulation().metrics().conversionPasses());
+        }
+    }
     @Test void scheduledRoundsRotateFirstPlayerAndGuaranteeEmptyCellPlacements() {
         var order = new ArrayList<Integer>();
         var random = PositionStrategy.random();
@@ -60,10 +113,10 @@ class SimulationTests {
         void action(int player) { simulation.play(player, 1); }
         @Override public void close() { simulation.close(); }
     }
-    Fixture fixture(Board board, int initial, int max, boolean convert, PositionStrategy strategy) {
+    Fixture fixture(Board board, int initial, int max, boolean convert, PlacementStrategy strategy) {
         return fixture(board, initial, max, convert, strategy, true);
     }
-    Fixture fixture(Board board, int initial, int max, boolean convert, PositionStrategy strategy, boolean stockEnabled) {
+    Fixture fixture(Board board, int initial, int max, boolean convert, PlacementStrategy strategy, boolean stockEnabled) {
         var tasks = new ArrayList<Runnable>();
         var clock = new AtomicLong();
         var scheduler = mock(ScheduledExecutorService.class);
@@ -91,9 +144,9 @@ class SimulationTests {
             assertFalse(fixture.simulation().status().configuration().stock().enabled());
         }
     }
-    @Test void occupiedCellsRejectPosesWithoutConsumingStock() {
+    @Test void alliedCellsRejectPosesWithoutConsumingStock() {
         var board = new Board(3, 3);
-        board.place(0, 0, CellState.BLUE);
+        board.place(0, 0, CellState.RED);
         try (var fixture = fixture(board, 7, 4, false, (b, p) -> new PositionStrategy.Position(0, 0))) {
             var simulation = fixture.simulation();
             simulation.start(); fixture.action(0); fixture.action(0); fixture.action(0);
@@ -105,8 +158,8 @@ class SimulationTests {
             assertEquals(BigInteger.ZERO, metrics.pixelsConsumed());
             assertEquals(7, simulation.status().players().getFirst().stock());
             assertEquals(0, metrics.conversionPasses());
-            assertEquals(0, simulation.scores().getFirst().cells());
-            assertEquals(CellState.BLUE, board.get(0, 0));
+            assertEquals(1, simulation.scores().getFirst().cells());
+            assertEquals(CellState.RED, board.get(0, 0));
         }
     }
     @Test void allPosesPrecedeConversionAndConversionDoesNotConsumeStock() {

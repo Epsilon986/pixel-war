@@ -31,11 +31,18 @@ class ConversionApiTests {
             var board = new Board(3, 3);
             board.place(1, 0, CellState.RED); board.place(1, 2, CellState.RED);
             board.place(0, 1, CellState.RED); board.place(2, 1, CellState.RED);
+            board.place(0, 0, CellState.BLUE); board.place(2, 0, CellState.GREEN); board.place(0, 2, CellState.YELLOW);
             var executor = mock(ScheduledExecutorService.class);
             when(executor.scheduleAtFixedRate(any(Runnable.class), anyLong(), anyLong(), eq(TimeUnit.NANOSECONDS)))
                     .thenAnswer(call -> { tasks.add(call.getArgument(0)); return mock(ScheduledFuture.class); });
             var config = new Simulation.Configuration(3, 3, 1000, 3, 3, new Stock.Configuration(1, 10, 1, 1_000_000), 1, true);
-            return new Simulation(board, config, (b, p) -> new PositionStrategy.Position(0, 0), () -> 0L, executor);
+            return new Simulation(board, config, (b, p) -> switch (p.color()) {
+                case RED -> new PlacementStrategy.Position(2, 2);
+                case BLUE -> new PlacementStrategy.Position(0, 0);
+                case GREEN -> new PlacementStrategy.Position(2, 0);
+                case YELLOW -> new PlacementStrategy.Position(0, 2);
+                default -> throw new IllegalArgumentException("Not a player");
+            }, () -> 0L, executor);
         }
     }
     @Autowired MockMvc mvc;
@@ -43,7 +50,7 @@ class ConversionApiTests {
 
     @Test void apiReportsConvertedPreviewScoreAndBeneficiaryWithoutStockCharge() throws Exception {
         mvc.perform(post("/api/simulation/start")).andExpect(status().isOk());
-        deterministic.tasks.get(0).run(); // A full round: red places at (0,0), then the center converts.
+        deterministic.tasks.get(0).run(); // Red places at (2,2), then the center converts; others target their own cells.
         mvc.perform(post("/api/simulation/pause")).andExpect(status().isOk());
         mvc.perform(get("/api/board/preview")).andExpect(jsonPath("$.cells[1][1]").value("RED"));
         mvc.perform(get("/api/simulation/scores")).andExpect(jsonPath("$[0].cells").value(6));
