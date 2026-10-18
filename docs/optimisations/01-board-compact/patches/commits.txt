@@ -1,0 +1,6 @@
+d1b48a6 perf(board): use compact linear color storage without changing game rules
+01fdacf fix(opti-01): handle compiler and test diagnostics without aborting native success
+f6e2293 fix(opti-01): preserve native stderr diagnostics under PowerShell
+26c2cd2 fix(opti-01): accept absolute experiment output paths
+ed760ac test(opti-01): add shared deterministic and polling experiment harness
+5870112 chore(opti-01): preserve complete metrics baseline from local files

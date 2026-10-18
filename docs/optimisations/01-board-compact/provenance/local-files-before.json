@@ -1,0 +1,26 @@
+﻿[
+    {
+        "Path":  "C:\\Users\\gui35\\ideaProjects\\pixel-war\\src\\main\\java\\org\\pixelwar\\pixelwar\\HttpPerformanceFilter.java",
+        "Hash":  "02D9FF16CFF70466EB5FCD6B2F8D7125735BC35BF10F3E9077E20604D4A2F8F6"
+    },
+    {
+        "Path":  "C:\\Users\\gui35\\ideaProjects\\pixel-war\\src\\main\\java\\org\\pixelwar\\pixelwar\\domain\\PerformanceTracker.java",
+        "Hash":  "1A4409494966AB595B8B47D12E60249EA40BD6A099176E3EEFE47CD06C449D4E"
+    },
+    {
+        "Path":  "C:\\Users\\gui35\\ideaProjects\\pixel-war\\src\\test\\java\\org\\pixelwar\\pixelwar\\HttpPerformanceFilterTests.java",
+        "Hash":  "F388CFA100C28DBC6F795798217A393E845147C7BF1B9568EB3401357EAC65F5"
+    },
+    {
+        "Path":  "C:\\Users\\gui35\\ideaProjects\\pixel-war\\src\\test\\java\\org\\pixelwar\\pixelwar\\PerformanceApiTests.java",
+        "Hash":  "20B3DB4B24B3D42BF54134ECD10B0F44363C58890560661A30650767E38DAEE9"
+    },
+    {
+        "Path":  "C:\\Users\\gui35\\ideaProjects\\pixel-war\\src\\test\\java\\org\\pixelwar\\pixelwar\\domain\\FixedWorkloadTests.java",
+        "Hash":  "2259AC78B060525C9AA30975FB869175737F3DCF884507F3FE4BD3D592151D10"
+    },
+    {
+        "Path":  "C:\\Users\\gui35\\ideaProjects\\pixel-war\\src\\test\\java\\org\\pixelwar\\pixelwar\\domain\\PerformanceTrackerTests.java",
+        "Hash":  "AD3BD1524CCEC1914A475770303C4FD321776B7C1D42269F2F88049E33DCD860"
+    }
+]

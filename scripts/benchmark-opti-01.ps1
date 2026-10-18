@@ -2,6 +2,7 @@ param(
     [Parameter(Mandatory=$true)][string]$BeforeRef,
     [string]$AfterRef,
     [string]$Java = 'java',
+    [string]$Python = 'python',
     [string]$ResultsDir = 'target/opti-01-results',
     [ValidateSet('All','Prepare','Calibrate','Before','After','Application','Profiles')][string]$Phase = 'All',
     [int]$EnginePairs = 5,
@@ -77,6 +78,8 @@ function Stamp-Result([string]$Path, [string]$Label, [string]$RunId, [int]$Order
     $data | Add-Member -NotePropertyName pairOrder -NotePropertyValue $Order -Force
     $data | Add-Member -NotePropertyName binarySha256 -NotePropertyValue $versions[$Label].meta.jarSha256 -Force
     $data | Add-Member -NotePropertyName harnessSha256 -NotePropertyValue $versions[$Label].meta.harnessSha256 -Force
+    $data | Add-Member -NotePropertyName configuration -NotePropertyValue ([ordered]@{width=$data.size; height=$data.size; intervalNs=10; maxPixelsPerAction=10; strategy='frontier'; explorationProbability=0.1; frontierSampleSize=10; weakOpponentBonus=8; targetHoldActions=20; stockEnabled=$false; conversionEnabled=$true; previewWidth=500; previewHeight=500}) -Force
+    $data | Add-Member -NotePropertyName completedUtc -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force
     $data | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $Path -Encoding UTF8
 }
 function Run-Engine([string]$Label,[int]$Size,[string]$Initial,[long]$Seed,[long]$Budget,[string]$Mode,[int]$Pair,[int]$Order,[double]$Warmup=3) {
@@ -124,9 +127,8 @@ function Run-Application([string]$Label,[int]$Size,[int]$Pair,[int]$Order,[bool]
         if ((Get-Content $output -Raw | ConvertFrom-Json).commit -ne $versions[$Label].commit) { throw "Stale result: $output" }
         return
     }
-    $port = 18086
-    $probe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,$port)
-    try { $probe.Start() } finally { $probe.Stop() }
+    $probe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0)
+    try { $probe.Start(); $port = ([Net.IPEndPoint]$probe.LocalEndpoint).Port } finally { $probe.Stop() }
     Write-Host "[$([DateTime]::Now.ToString('HH:mm:ss'))] $id : $ApplicationSeconds seconds with polling"
     $v = $versions[$Label]; $root = "http://127.0.0.1:$port"
     $profilePath = if ($Profile) { Join-Path $results "profiles/$id.jfr" } else { 'none' }
@@ -163,7 +165,7 @@ function Run-Application([string]$Label,[int]$Size,[int]$Pair,[int]$Order,[bool]
         $latencies = @($requests | Where-Object Status -eq 200 | ForEach-Object ElapsedNanos | Sort-Object)
         $p95 = if ($latencies.Count) { $latencies[[int][Math]::Ceiling(.95*$latencies.Count)-1] } else { $null }
         $p99 = if ($latencies.Count) { $latencies[[int][Math]::Ceiling(.99*$latencies.Count)-1] } else { $null }
-        $data = [ordered]@{mode='application'; size=$Size; initial='empty'; seed=11; requestedSeconds=$ApplicationSeconds; warmupSeconds=$ApplicationWarmupSeconds; elapsedNanos=$elapsedNanos; executedActions=$actions; before=$before; after=$after; cpuNanos=($after.cpuNanos-$before.cpuNanos); processCpuNanos=($after.processCpuNanos-$before.processCpuNanos); allocatedBytesPerAction=($after.engineAllocatedBytes-$before.engineAllocatedBytes)/$actions; peakObservedHeapBytes=$after.peakObservedHeapBytes; heapSamplePeriodMillis=10; attemptsPerSecond=($after.business.attempts-$before.business.attempts)*1e9/$elapsedNanos; modificationsPerSecond=($after.business.modifications-$before.business.modifications)*1e9/$elapsedNanos; httpP95Nanos=$p95; httpP99Nanos=$p99; httpSamples=$latencies.Count; errors=@($requests | Where-Object { $_.Status -ne 200 -or $_.Error }); requests=$requests; instrumentation= $(if ($Profile) {'JFR-profile; monitor threshold 1 ms'} else {'no JFR'}); colorsLayout=$after.colorsLayout }
+        $data = [ordered]@{mode='application'; size=$Size; initial='empty'; seed=11; serverPort=$port; requestedSeconds=$ApplicationSeconds; warmupSeconds=$ApplicationWarmupSeconds; elapsedNanos=$elapsedNanos; executedActions=$actions; before=$before; after=$after; cpuNanos=($after.cpuNanos-$before.cpuNanos); processCpuNanos=($after.processCpuNanos-$before.processCpuNanos); allocatedBytesPerAction=($after.engineAllocatedBytes-$before.engineAllocatedBytes)/$actions; peakObservedHeapBytes=$after.peakObservedHeapBytes; heapSamplePeriodMillis=10; attemptsPerSecond=($after.business.attempts-$before.business.attempts)*1e9/$elapsedNanos; modificationsPerSecond=($after.business.modifications-$before.business.modifications)*1e9/$elapsedNanos; httpP95Nanos=$p95; httpP99Nanos=$p99; httpSamples=$latencies.Count; errors=@($requests | Where-Object { $_.Status -ne 200 -or $_.Error }); requests=$requests; instrumentation= $(if ($Profile) {'JFR-profile; monitor threshold 1 ms'} else {'no JFR'}); colorsLayout=$after.colorsLayout }
         $data | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $output -Encoding UTF8
         Stamp-Result $output $Label $id $Order
     } finally {
@@ -220,3 +222,14 @@ if ($Phase -in @('All','Profiles','Before','After')) {
     }
 }
 Write-Host "Measurements saved in $results"
+if ($Phase -eq 'All') {
+    $analyzerVersion = $versions['after']
+    $analysisClasses = Join-Path $results 'analysis-classes'
+    New-Item -ItemType Directory -Force -Path $analysisClasses | Out-Null
+    Invoke-LoggedNative (Join-Path $jdkBin 'javac.exe') @('--release','21','--class-path',$analyzerVersion.cp,'-d',$analysisClasses,(Join-Path $PSScriptRoot 'opti01/JfrSummary.java')) (Join-Path $results 'logs/compile-analyzer.log')
+    foreach ($profile in (Get-ChildItem -LiteralPath (Join-Path $results 'profiles') -Filter '*.jfr')) {
+        Invoke-LoggedNative $javaPath @('--class-path',($analysisClasses + ';' + $analyzerVersion.cp),'org.pixelwar.pixelwar.domain.JfrSummary',$profile.FullName,$profile.FullName.Replace('.jfr','.summary.json')) (Join-Path $results ('logs/export-' + $profile.BaseName + '.log'))
+    }
+    & $Python (Join-Path $PSScriptRoot 'opti01/summarize.py') $results
+    if ($LASTEXITCODE -ne 0) { throw 'Summary/figure generation failed; install scripts/opti01/requirements.txt dependencies.' }
+}

@@ -1,0 +1,1020 @@
+diff --git a/scripts/benchmark-opti-01.ps1 b/scripts/benchmark-opti-01.ps1
+new file mode 100644
+index 0000000..71aedfd
+--- /dev/null
++++ b/scripts/benchmark-opti-01.ps1
+@@ -0,0 +1,222 @@
++param(
++    [Parameter(Mandatory=$true)][string]$BeforeRef,
++    [string]$AfterRef,
++    [string]$Java = 'java',
++    [string]$ResultsDir = 'target/opti-01-results',
++    [ValidateSet('All','Prepare','Calibrate','Before','After','Application','Profiles')][string]$Phase = 'All',
++    [int]$EnginePairs = 5,
++    [int]$ApplicationPairs = 3,
++    [int]$ApplicationSeconds = 20,
++    [int]$ApplicationWarmupSeconds = 5,
++    [switch]$Resume
++)
++$ErrorActionPreference = 'Stop'
++if ($EnginePairs -lt 5 -or $ApplicationPairs -lt 3 -or $ApplicationSeconds -lt 20) { throw 'Minimum: 5 engine pairs, 3 application pairs, 20 second windows.' }
++$repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
++$results = if ([IO.Path]::IsPathRooted($ResultsDir)) { [IO.Path]::GetFullPath($ResultsDir) } else { [IO.Path]::GetFullPath((Join-Path $repo $ResultsDir)) }
++$javaPath = (Get-Command $Java -ErrorAction Stop).Source
++$jdkBin = Split-Path -Parent $javaPath
++$env:JAVA_HOME = Split-Path -Parent $jdkBin
++$flags = @('-Xms2g','-Xmx2g','-XX:+UseG1GC')
++foreach ($dir in @('raw','logs','profiles','builds')) { New-Item -ItemType Directory -Force -Path (Join-Path $results $dir) | Out-Null }
++$environment = [ordered]@{StartedUtc=[DateTime]::UtcNow.ToString('o'); Before=$BeforeRef; After=$AfterRef; Java=$javaPath; Flags=$flags; EnginePairs=$EnginePairs; ApplicationPairs=$ApplicationPairs; ApplicationSeconds=$ApplicationSeconds; ApplicationWarmupSeconds=$ApplicationWarmupSeconds; EngineWarmupSeconds=3; HeapSamplePeriodMs=10; PerformanceSeed=11; ReplaySeeds=@(11,22,33); PollEndpoints=@('/api/simulation','/api/simulation/scores','/api/performance','/api/board/preview'); PollPeriodMs=1000; PreviewWidth=500; PreviewHeight=500; Cpu=(Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores,NumberOfLogicalProcessors,L2CacheSize,L3CacheSize); Computer=(Get-CimInstance Win32_ComputerSystem | Select-Object TotalPhysicalMemory); Os=(Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,OSArchitecture)}
++$environment | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $results 'environment.json')
++$environment | ConvertTo-Json -Depth 8 -Compress | Add-Content -Encoding UTF8 -LiteralPath (Join-Path $results 'invocations.jsonl')
++$savedErrorPreference = $ErrorActionPreference
++$ErrorActionPreference = 'Continue' # java -version intentionally writes its version to stderr on Windows PowerShell.
++& $javaPath -version 2> (Join-Path $results 'java-version.txt')
++$ErrorActionPreference = $savedErrorPreference
++$versions = @{}
++function Invoke-LoggedNative([string]$File,[string[]]$Arguments,[string]$Log) {
++    $saved = $ErrorActionPreference
++    try {
++        $ErrorActionPreference = 'Continue'
++        & $File @Arguments > $Log 2>&1
++        $exitCode = $LASTEXITCODE
++    } finally { $ErrorActionPreference = $saved }
++    if ($exitCode -ne 0) { throw "Native command failed ($exitCode): $File. See $Log" }
++}
++
++function Prepare-Version([string]$Label, [string]$Reference) {
++    if (!$Reference) { return }
++    Push-Location -LiteralPath $repo
++    try {
++        $commit = (git rev-parse $Reference).Trim()
++        if ($LASTEXITCODE -ne 0) { throw "Invalid reference: $Reference" }
++        $folder = Join-Path $results "builds/$Label"
++        $source = Join-Path $folder 'source'
++        New-Item -ItemType Directory -Force -Path $source | Out-Null
++        $metadataPath = Join-Path $folder 'build.json'
++        if (!($Resume -and (Test-Path -LiteralPath $metadataPath) -and ((Get-Content $metadataPath -Raw | ConvertFrom-Json).commit -eq $commit))) {
++            git archive --format=tar -o (Join-Path $folder 'source.tar') $commit
++            if ($LASTEXITCODE -ne 0) { throw 'git archive failed.' }
++            & tar -xf (Join-Path $folder 'source.tar') -C $source
++            if ($LASTEXITCODE -ne 0) { throw 'Source extraction failed.' }
++            Push-Location -LiteralPath $source
++            try {
++                Invoke-LoggedNative './mvnw.cmd' @('-B','-ntp','verify','dependency:build-classpath','-Dmdep.outputFile=target/experiment-classpath.txt') (Join-Path $results "logs/build-$Label.log")
++                $cp = 'target/classes;' + (Get-Content target/experiment-classpath.txt -Raw).Trim()
++                New-Item -ItemType Directory -Force -Path target/experiment-classes | Out-Null
++                $javaFiles = @(Get-ChildItem -LiteralPath scripts/opti01 -Filter '*.java' | ForEach-Object FullName)
++                Invoke-LoggedNative (Join-Path $jdkBin 'javac.exe') (@('--release','21','--class-path',$cp,'-d','target/experiment-classes') + $javaFiles) (Join-Path $results "logs/harness-$Label.log")
++                @('Premain-Class: org.pixelwar.pixelwar.domain.StorageAgent','') | Set-Content -LiteralPath target/experiment-manifest.mf -Encoding Ascii
++                & (Join-Path $jdkBin 'jar.exe') --create --file target/storage-agent.jar --manifest target/experiment-manifest.mf -C target/experiment-classes .
++                if ($LASTEXITCODE -ne 0) { throw 'Agent packaging failed.' }
++                [ordered]@{commit=$commit; jarSha256=(Get-FileHash target/pixel-war-0.0.1-SNAPSHOT.jar -Algorithm SHA256).Hash; harnessSha256=(Get-FileHash target/storage-agent.jar -Algorithm SHA256).Hash; sourceStatus='clean git archive'} | ConvertTo-Json | Set-Content -Encoding UTF8 -LiteralPath $metadataPath
++            } finally { Pop-Location }
++        }
++        $dependencyCp = (Get-Content (Join-Path $source 'target/experiment-classpath.txt') -Raw).Trim()
++        $versions[$Label] = @{source=$source; commit=$commit; meta=(Get-Content $metadataPath -Raw | ConvertFrom-Json); cp=((Join-Path $source 'target/experiment-classes') + ';' + (Join-Path $source 'target/classes') + ';' + $dependencyCp); agent=(Join-Path $source 'target/storage-agent.jar')}
++    } finally { Pop-Location }
++}
++function Stamp-Result([string]$Path, [string]$Label, [string]$RunId, [int]$Order) {
++    $data = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
++    $data | Add-Member -NotePropertyName version -NotePropertyValue $Label -Force
++    $data | Add-Member -NotePropertyName commit -NotePropertyValue $versions[$Label].commit -Force
++    $data | Add-Member -NotePropertyName runId -NotePropertyValue $RunId -Force
++    $data | Add-Member -NotePropertyName pairOrder -NotePropertyValue $Order -Force
++    $data | Add-Member -NotePropertyName binarySha256 -NotePropertyValue $versions[$Label].meta.jarSha256 -Force
++    $data | Add-Member -NotePropertyName harnessSha256 -NotePropertyValue $versions[$Label].meta.harnessSha256 -Force
++    $data | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $Path -Encoding UTF8
++}
++function Run-Engine([string]$Label,[int]$Size,[string]$Initial,[long]$Seed,[long]$Budget,[string]$Mode,[int]$Pair,[int]$Order,[double]$Warmup=3) {
++    $id = "$Mode-$Size-$Initial-s$Seed-p$Pair-$Label"
++    $output = Join-Path $results "raw/$id.json"
++    if ($Resume -and (Test-Path -LiteralPath $output)) {
++        if ((Get-Content $output -Raw | ConvertFrom-Json).commit -ne $versions[$Label].commit) { throw "Stale result: $output" }
++        return
++    }
++    Write-Host "[$([DateTime]::Now.ToString('HH:mm:ss'))] $id : $Budget actions"
++    $profile = if ($Mode -eq 'profile') { Join-Path $results "profiles/$id.jfr" } else { 'none' }
++    $v = $versions[$Label]
++    $arguments = $flags + @(('-javaagent:' + $v.agent),'--class-path',$v.cp,'org.pixelwar.pixelwar.domain.BoardExperiment',$Mode,"$Size",$Initial,"$Seed","$Budget",$Warmup.ToString([Globalization.CultureInfo]::InvariantCulture),$output,$profile)
++    $savedErrorPreference = $ErrorActionPreference
++    $ErrorActionPreference = 'Continue'
++    & $javaPath @arguments > (Join-Path $results "logs/$id.log") 2>&1
++    $nativeExit = $LASTEXITCODE
++    $ErrorActionPreference = $savedErrorPreference
++    if ($nativeExit -ne 0) { throw "Engine trial failed: $id (failure preserved in logs)." }
++    Stamp-Result $output $Label $id $Order
++}
++
++Add-Type -AssemblyName System.Net.Http
++if (!('Opti01Poller' -as [type])) {
++    Add-Type -ReferencedAssemblies ([System.Net.Http.HttpClient].Assembly.Location) -TypeDefinition @'
++using System;
++using System.Diagnostics;
++using System.Net.Http;
++using System.Threading.Tasks;
++public class Opti01PollResult { public string Path; public int Status; public double ElapsedNanos; public string Error; }
++public static class Opti01Poller {
++ public static async Task<Opti01PollResult> Read(HttpClient client, string root, string path) {
++  var watch = Stopwatch.StartNew(); var result = new Opti01PollResult { Path = path };
++  try { using (var response = await client.GetAsync(root + path)) { await response.Content.ReadAsStringAsync(); result.Status = (int)response.StatusCode; } }
++  catch (Exception exception) { result.Error = exception.GetType().Name + ": " + exception.Message; }
++  result.ElapsedNanos = watch.ElapsedTicks * 1e9 / Stopwatch.Frequency; return result;
++ }
++}
++'@
++}
++function Run-Application([string]$Label,[int]$Size,[int]$Pair,[int]$Order,[bool]$Profile=$false) {
++    $id = if ($Profile) { "application-profile-$Size-empty-s11-p$Pair-$Label" } else { "application-$Size-empty-s11-p$Pair-$Label" }
++    $output = Join-Path $results "raw/$id.json"
++    if ($Resume -and (Test-Path -LiteralPath $output)) {
++        if ((Get-Content $output -Raw | ConvertFrom-Json).commit -ne $versions[$Label].commit) { throw "Stale result: $output" }
++        return
++    }
++    $port = 18086
++    $probe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,$port)
++    try { $probe.Start() } finally { $probe.Stop() }
++    Write-Host "[$([DateTime]::Now.ToString('HH:mm:ss'))] $id : $ApplicationSeconds seconds with polling"
++    $v = $versions[$Label]; $root = "http://127.0.0.1:$port"
++    $profilePath = if ($Profile) { Join-Path $results "profiles/$id.jfr" } else { 'none' }
++    $argValues = $flags + @(('-javaagent:' + $v.agent),'--class-path',$v.cp,'org.pixelwar.pixelwar.domain.BoardExperiment','server',"$Size",'empty','11',"$port",'0',$output,$profilePath)
++    $quoted = @($argValues | ForEach-Object { '"' + $_ + '"' })
++    $process = Start-Process -FilePath $javaPath -ArgumentList $quoted -WindowStyle Hidden -PassThru -WorkingDirectory $v.source -RedirectStandardOutput (Join-Path $results "logs/$id.log") -RedirectStandardError (Join-Path $results "logs/$id-error.log")
++    [Net.ServicePointManager]::DefaultConnectionLimit = 32
++    $client = [Net.Http.HttpClient]::new(); $client.Timeout = [TimeSpan]::FromSeconds(30)
++    try {
++        $ready=$false
++        for ($i=0;$i -lt 120;$i++) {
++            if ($process.HasExited) { throw "Server exited: $id" }
++            try { Invoke-RestMethod "$root/health" -TimeoutSec 1 | Out-Null; $ready=$true; break } catch { Start-Sleep -Milliseconds 250 }
++        }
++        if (!$ready) { throw "Server startup timed out: $id" }
++        Invoke-RestMethod "$root/api/simulation/start" -Method Post | Out-Null
++        Start-Sleep -Seconds $ApplicationWarmupSeconds
++        Invoke-RestMethod "$root/api/simulation/pause" -Method Post | Out-Null
++        $before = Invoke-RestMethod "$root/experiment/begin" -Method Post
++        $requests = [Collections.Generic.List[object]]::new()
++        $watch = [Diagnostics.Stopwatch]::StartNew(); $nextPoll=0.0
++        Invoke-RestMethod "$root/api/simulation/resume" -Method Post | Out-Null
++        while ($watch.Elapsed.TotalSeconds -lt $ApplicationSeconds) {
++            $tasks = @($environment.PollEndpoints | ForEach-Object { [Opti01Poller]::Read($client,$root,$_) })
++            foreach ($task in $tasks) { $requests.Add($task.GetAwaiter().GetResult()) }
++            $nextPoll += 1000
++            $delay = $nextPoll - $watch.Elapsed.TotalMilliseconds
++            if ($delay -gt 0) { Start-Sleep -Milliseconds ([int]$delay) }
++        }
++        Invoke-RestMethod "$root/api/simulation/pause" -Method Post | Out-Null
++        $elapsedNanos = $watch.Elapsed.TotalSeconds * 1e9
++        $after = Invoke-RestMethod "$root/experiment/finish" -Method Post
++        $actions = $after.business.actions - $before.business.actions
++        $latencies = @($requests | Where-Object Status -eq 200 | ForEach-Object ElapsedNanos | Sort-Object)
++        $p95 = if ($latencies.Count) { $latencies[[int][Math]::Ceiling(.95*$latencies.Count)-1] } else { $null }
++        $p99 = if ($latencies.Count) { $latencies[[int][Math]::Ceiling(.99*$latencies.Count)-1] } else { $null }
++        $data = [ordered]@{mode='application'; size=$Size; initial='empty'; seed=11; requestedSeconds=$ApplicationSeconds; warmupSeconds=$ApplicationWarmupSeconds; elapsedNanos=$elapsedNanos; executedActions=$actions; before=$before; after=$after; cpuNanos=($after.cpuNanos-$before.cpuNanos); processCpuNanos=($after.processCpuNanos-$before.processCpuNanos); allocatedBytesPerAction=($after.engineAllocatedBytes-$before.engineAllocatedBytes)/$actions; peakObservedHeapBytes=$after.peakObservedHeapBytes; heapSamplePeriodMillis=10; attemptsPerSecond=($after.business.attempts-$before.business.attempts)*1e9/$elapsedNanos; modificationsPerSecond=($after.business.modifications-$before.business.modifications)*1e9/$elapsedNanos; httpP95Nanos=$p95; httpP99Nanos=$p99; httpSamples=$latencies.Count; errors=@($requests | Where-Object { $_.Status -ne 200 -or $_.Error }); requests=$requests; instrumentation= $(if ($Profile) {'JFR-profile; monitor threshold 1 ms'} else {'no JFR'}); colorsLayout=$after.colorsLayout }
++        $data | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $output -Encoding UTF8
++        Stamp-Result $output $Label $id $Order
++    } finally {
++        $client.Dispose()
++        if (!$process.HasExited) { Stop-Process -Id $process.Id -Force }
++    }
++}
++
++Prepare-Version 'before' $BeforeRef
++Prepare-Version 'after' $AfterRef
++if ($Phase -eq 'Prepare') { return }
++$budgetPath = Join-Path $results 'budgets.json'
++if ($Phase -in @('All','Calibrate') -and !(Test-Path -LiteralPath $budgetPath)) {
++    $budgets = [ordered]@{}
++    foreach ($size in @(500,4000)) { foreach ($initial in @('empty','full')) {
++        Run-Engine 'before' $size $initial 11 5000 'calibration' 0 0 3
++        $data = Get-Content (Join-Path $results "raw/calibration-$size-$initial-s11-p0-before.json") -Raw | ConvertFrom-Json
++        $budgets["$size-$initial"] = [long]([Math]::Max(10000,[Math]::Min(1000000,[Math]::Ceiling(5000*2e9/$data.elapsedNanos/1000)*1000)))
++    } }
++    $budgets | ConvertTo-Json | Set-Content -LiteralPath $budgetPath -Encoding UTF8
++}
++if ($Phase -eq 'Calibrate') { return }
++if (!(Test-Path -LiteralPath $budgetPath)) { throw 'Run -Phase Calibrate on baseline before modifying storage.' }
++$budgets = Get-Content $budgetPath -Raw | ConvertFrom-Json
++if ($Phase -in @('All','Before','After')) {
++    foreach ($size in @(500,4000)) { foreach ($initial in @('empty','full')) {
++        for ($pair=1;$pair -le $EnginePairs;$pair++) {
++            $order = if ($pair % 2) {@('before','after')} else {@('after','before')}
++            for ($index=0;$index -lt $order.Count;$index++) {
++                $label=$order[$index]
++                if (($Phase -eq 'Before' -and $label -ne 'before') -or ($Phase -eq 'After' -and $label -ne 'after') -or !$versions.ContainsKey($label)) { continue }
++                Run-Engine $label $size $initial 11 $budgets."$size-$initial" 'engine' $pair $index 3
++            }
++        }
++    } }
++    foreach ($size in @(500,4000)) { foreach ($initial in @('empty','full')) { foreach ($seed in @(11,22,33)) {
++        foreach ($label in @('before','after')) {
++            if (($Phase -eq 'Before' -and $label -ne 'before') -or ($Phase -eq 'After' -and $label -ne 'after') -or !$versions.ContainsKey($label)) { continue }
++            Run-Engine $label $size $initial $seed 10000 'replay' 0 0 0
++        }
++    } } }
++}
++if ($Phase -in @('All','Application')) {
++    foreach ($size in @(500,4000)) { for ($pair=1;$pair -le $ApplicationPairs;$pair++) {
++        $order = if ($pair % 2) {@('before','after')} else {@('after','before')}
++        for ($index=0;$index -lt 2;$index++) { Run-Application $order[$index] $size $pair $index }
++    } }
++}
++if ($Phase -in @('All','Profiles','Before','After')) {
++    foreach ($label in @('before','after')) {
++        if (($Phase -eq 'Before' -and $label -ne 'before') -or ($Phase -eq 'After' -and $label -ne 'after') -or !$versions.ContainsKey($label)) { continue }
++        Run-Engine $label 4000 'full' 11 (4*$budgets.'4000-full') 'profile' 0 0 3
++        if ($Phase -in @('All','Profiles')) { Run-Application $label 4000 0 0 $true }
++    }
++}
++Write-Host "Measurements saved in $results"
+diff --git a/scripts/opti01/BoardExperiment.java b/scripts/opti01/BoardExperiment.java
+new file mode 100644
+index 0000000..f13af30
+--- /dev/null
++++ b/scripts/opti01/BoardExperiment.java
+@@ -0,0 +1,238 @@
++package org.pixelwar.pixelwar.domain;
++
++import com.sun.management.HotSpotDiagnosticMXBean;
++import java.lang.management.ManagementFactory;
++import java.lang.reflect.Array;
++import java.lang.reflect.Field;
++import java.nio.file.Files;
++import java.nio.file.Path;
++import java.security.MessageDigest;
++import java.time.Duration;
++import java.util.ArrayList;
++import java.util.HexFormat;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.Random;
++import java.util.concurrent.Executors;
++import java.util.concurrent.ScheduledExecutorService;
++import java.util.concurrent.ScheduledFuture;
++import java.util.concurrent.ScheduledThreadPoolExecutor;
++import java.util.concurrent.TimeUnit;
++import java.util.concurrent.atomic.AtomicLong;
++import jdk.jfr.Configuration;
++import jdk.jfr.Recording;
++import org.pixelwar.pixelwar.HealthController;
++import org.pixelwar.pixelwar.HttpPerformanceFilter;
++import org.pixelwar.pixelwar.SimulationController;
++import org.springframework.boot.SpringApplication;
++import org.springframework.boot.SpringBootConfiguration;
++import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
++import org.springframework.context.annotation.Bean;
++import org.springframework.context.annotation.Import;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** Common experiment harness. Never changes a game rule or the production API. */
++public final class BoardExperiment {
++    private static final Field ACTIONS = field(Simulation.class, "actions");
++    private static final Field STATE = field(Simulation.class, "state");
++    private static final Field CELLS = field(Board.class, "cells");
++    private static final Field POSITIONS = field(Simulation.class, "positions");
++    private static final java.lang.management.ThreadMXBean THREADS = ManagementFactory.getThreadMXBean();
++    private static final com.sun.management.ThreadMXBean ALLOC = (com.sun.management.ThreadMXBean) THREADS;
++    private static final java.lang.management.MemoryMXBean MEMORY = ManagementFactory.getMemoryMXBean();
++    private static final AtomicLong PEAK = new AtomicLong();
++    private static final ScheduledExecutorService SAMPLER = Executors.newSingleThreadScheduledExecutor(task -> {
++        var thread = new Thread(task, "opti-01-heap-sampler"); thread.setDaemon(true); return thread;
++    });
++    private static Board serverBoard;
++    private static Simulation serverSimulation;
++    private static Path serverProfile;
++    private static Recording recording;
++
++    private record Game(Board board, Simulation simulation, FrontierPlacementStrategy strategy) implements AutoCloseable {
++        public void close() { simulation.close(); }
++    }
++    public static void main(String[] args) throws Exception {
++        // mode size initial seed budget warmupSeconds output.json profile.jfr-or-none
++        String mode = args[0], initial = args[2];
++        int size = Integer.parseInt(args[1]);
++        long seed = Long.parseLong(args[3]), budget = Long.parseLong(args[4]);
++        double warmupSeconds = Double.parseDouble(args[5]);
++        Path output = Path.of(args[6]);
++        THREADS.setThreadCpuTimeEnabled(true);
++        ALLOC.setThreadAllocatedMemoryEnabled(true);
++        SAMPLER.scheduleAtFixedRate(() -> PEAK.accumulateAndGet(MEMORY.getHeapMemoryUsage().getUsed(), Math::max), 0, 10, TimeUnit.MILLISECONDS);
++        if (mode.equals("server")) {
++            var game = create(size, initial, seed, true);
++            serverBoard = game.board(); serverSimulation = game.simulation();
++            if (!args[7].equals("none")) serverProfile = Path.of(args[7]);
++            var app = new SpringApplication(ServerConfiguration.class);
++            app.run("--server.port=" + budget, "--spring.application.name=opti-01");
++            return;
++        }
++        if (warmupSeconds > 0) warmup(size, initial, seed, warmupSeconds);
++        System.gc();
++        long preparationStart = System.nanoTime();
++        try (var game = create(size, initial, seed, false)) {
++            long preparationNs = System.nanoTime() - preparationStart;
++            var before = business(game);
++            var layout = layout(game.board());
++            System.gc(); // Drop preparation garbage before timing, identically in both versions.
++            game.simulation().start();
++            if (!args[7].equals("none")) recording = startRecording();
++            PEAK.set(MEMORY.getHeapMemoryUsage().getUsed());
++            long thread = Thread.currentThread().threadId();
++            long cpuStart = THREADS.getCurrentThreadCpuTime(), allocatedStart = ALLOC.getThreadAllocatedBytes(thread);
++            long start = System.nanoTime();
++            runActions(game.simulation(), budget);
++            long elapsed = System.nanoTime() - start;
++            long cpu = THREADS.getCurrentThreadCpuTime() - cpuStart, allocated = ALLOC.getThreadAllocatedBytes(thread) - allocatedStart;
++            PEAK.accumulateAndGet(MEMORY.getHeapMemoryUsage().getUsed(), Math::max);
++            long peak = PEAK.get();
++            game.simulation().pause();
++            if (recording != null) { recording.stop(); recording.dump(Path.of(args[7])); recording.close(); }
++            var after = business(game);
++            long actions = (long) after.get("actions") - (long) before.get("actions");
++            long attempts = (long) after.get("attempts") - (long) before.get("attempts");
++            long modifications = (long) after.get("modifications") - (long) before.get("modifications");
++            var result = map("mode", mode, "size", size, "initial", initial, "seed", seed,
++                    "requestedActions", budget, "executedActions", actions, "warmupSeconds", warmupSeconds,
++                    "preparationNanos", preparationNs, "elapsedNanos", elapsed, "cpuNanos", cpu,
++                    "allocatedBytes", allocated, "allocatedBytesPerAction", allocated / (double) actions,
++                    "peakObservedHeapBytes", peak, "heapSamplePeriodMillis", 10,
++                    "attemptsPerSecond", attempts * 1e9 / elapsed, "modificationsPerSecond", modifications * 1e9 / elapsed,
++                    "before", before, "after", after, "spatialSha256", spatialHash(game.board()),
++                    "colorsLayout", layout, "runtime", runtime(), "errors", List.of());
++            if (actions != budget) throw new IllegalStateException("Executed action count differs from budget");
++            Files.writeString(output, json(result));
++        }
++    }
++    private static void warmup(int size, String initial, long seed, double seconds) throws Exception {
++        try (var game = create(size, initial, seed, false)) {
++            game.simulation().start();
++            long deadline = System.nanoTime() + (long) (seconds * 1e9);
++            while (System.nanoTime() < deadline) runActions(game.simulation(), ACTIONS.getLong(game.simulation()) + 1000);
++        }
++    }
++    private static Game create(int size, String initial, long seed, boolean scheduled) {
++        var board = new Board(size, size);
++        if (initial.equals("full")) {
++            var random = new Random(seed + 1000);
++            for (int y = 0; y < size; y++) for (int x = 0; x < size; x++) board.place(x, y, CellState.values()[1 + random.nextInt(4)]);
++        }
++        var config = new Simulation.Configuration(size, size, 10, 500, 500,
++                new Stock.Configuration(100, 1000, 100, 10000, false), 10, true, "frontier", .1, 10, 8, 20);
++        var strategy = new FrontierPlacementStrategy(new Random(seed), .1, 10, 8, 20);
++        ScheduledExecutorService scheduler = scheduled ? Executors.newSingleThreadScheduledExecutor() : new ScheduledThreadPoolExecutor(1) {
++            @Override public ScheduledFuture<?> scheduleAtFixedRate(Runnable task, long delay, long period, TimeUnit unit) {
++                return super.schedule(() -> {}, 1, TimeUnit.DAYS);
++            }
++        };
++        return new Game(board, new Simulation(board, config, strategy, System::nanoTime, scheduler), strategy);
++    }
++    private static void runActions(Simulation simulation, long total) throws Exception {
++        int first = 0;
++        while (ACTIONS.getLong(simulation) < total) {
++            for (int offset = 0; offset < 4 && ACTIONS.getLong(simulation) < total; offset++) simulation.play((first + offset) % 4, 1);
++            first = (first + 1) % 4;
++            if (first == 0 && STATE.get(simulation) != Simulation.State.RUNNING) throw new IllegalStateException("Unexpected engine stop");
++        }
++    }
++    private static Map<String, Object> business(Game game) {
++        var metrics = game.simulation().metrics();
++        var players = new ArrayList<Object>();
++        for (int i = 0; i < 4; i++) {
++            var player = metrics.players().get(i);
++            var state = metrics.simulation().players().get(i);
++            players.add(map("color", player.player().color().name(), "stock", state.stock(), "eliminated", state.eliminated(),
++                    "attempts", player.attempts(), "modifications", player.modifications(), "actions", player.actions(),
++                    "actionsWithoutStock", player.actionsWithoutStock(), "pixelsConsumed", player.pixelsConsumed().toString(),
++                    "pixelsRefilled", player.pixelsRefilled().toString(), "pixelsDiscarded", player.pixelsDiscardedAtCapacity().toString(),
++                    "conversionsReceived", player.conversionsReceived(), "priorityTarget", game.strategy().priorityTarget(game.board(), player.player().color())));
++        }
++        return map("actions", metrics.actions(), "attempts", metrics.simulation().attempts(), "modifications", metrics.simulation().modifications(),
++                "conversions", metrics.conversions(), "conversionPasses", metrics.conversionPasses(), "boardChanges", metrics.boardChanges(),
++                "counts", metrics.cellsByColor(), "frontierSizes", metrics.frontiers().sizes(), "players", players);
++    }
++    private static Map<String, Object> layout(Board board) throws Exception {
++        Object colors = CELLS.get(board);
++        long bytes = StorageAgent.instrumentation.getObjectSize(colors);
++        int arrays = 1;
++        if (colors instanceof Object[] rows) for (var row : rows) { bytes += StorageAgent.instrumentation.getObjectSize(row); arrays++; }
++        return map("type", colors.getClass().getTypeName(), "arrays", arrays, "totalArrayBytes", bytes,
++                "cells", board.totalCells(), "measurement", "Instrumentation.getObjectSize; color arrays only; shared enum instances excluded");
++    }
++    private static String spatialHash(Board board) throws Exception {
++        var digest = MessageDigest.getInstance("SHA-256");
++        for (int y = 0; y < board.height(); y++) for (int x = 0; x < board.width(); x++) digest.update((byte) board.get(x, y).ordinal());
++        return HexFormat.of().formatHex(digest.digest());
++    }
++    private static Map<String, Object> runtime() {
++        var diagnostic = ManagementFactory.getPlatformMXBean(HotSpotDiagnosticMXBean.class);
++        return map("javaVersion", System.getProperty("java.runtime.version"), "vm", System.getProperty("java.vm.name"),
++                "flags", ManagementFactory.getRuntimeMXBean().getInputArguments(), "os", System.getProperty("os.name"),
++                "gc", ManagementFactory.getGarbageCollectorMXBeans().stream().map(java.lang.management.GarbageCollectorMXBean::getName).toList(),
++                "maxHeapBytes", Runtime.getRuntime().maxMemory(), "processors", Runtime.getRuntime().availableProcessors(),
++                "compressedOops", diagnostic.getVMOption("UseCompressedOops").getValue(),
++                "objectAlignment", diagnostic.getVMOption("ObjectAlignmentInBytes").getValue());
++    }
++    private static Recording startRecording() throws Exception {
++        var value = new Recording(Configuration.getConfiguration("profile"));
++        value.enable("jdk.JavaMonitorEnter").withThreshold(Duration.ofMillis(1)).withStackTrace();
++        value.enable("jdk.ObjectAllocationSample").withStackTrace();
++        value.start();
++        return value;
++    }
++    private static Field field(Class<?> type, String name) {
++        try { var value = type.getDeclaredField(name); value.setAccessible(true); return value; }
++        catch (ReflectiveOperationException exception) { throw new ExceptionInInitializerError(exception); }
++    }
++    public static LinkedHashMap<String, Object> map(Object... pairs) {
++        var result = new LinkedHashMap<String, Object>();
++        for (int i = 0; i < pairs.length; i += 2) result.put(pairs[i].toString(), pairs[i + 1]);
++        return result;
++    }
++    public static String json(Object value) {
++        if (value == null) return "null";
++        if (value instanceof Number || value instanceof Boolean) return value.toString();
++        if (value instanceof Map<?, ?> values) return values.entrySet().stream().map(entry -> json(entry.getKey().toString()) + ":" + json(entry.getValue())).collect(java.util.stream.Collectors.joining(",", "{", "}"));
++        if (value instanceof Iterable<?> values) { var items = new ArrayList<String>(); for (var item : values) items.add(json(item)); return String.join(",", items).transform(text -> "[" + text + "]"); }
++        return "\"" + value.toString().replace("\\", "\\\\").replace("\"", "\\\"").replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t") + "\"";
++    }
++    @SpringBootConfiguration
++    @EnableAutoConfiguration
++    @Import({SimulationController.class, HttpPerformanceFilter.class, HealthController.class, ExperimentEndpoints.class})
++    public static class ServerConfiguration {
++        @Bean(destroyMethod = "close") public Simulation simulation() { return serverSimulation; }
++    }
++    @RestController
++    public static class ExperimentEndpoints {
++        @PostMapping(value = "/experiment/begin", produces = "application/json")
++        public String begin() throws Exception {
++            PEAK.set(MEMORY.getHeapMemoryUsage().getUsed());
++            if (serverProfile != null) recording = startRecording();
++            return snapshot();
++        }
++        @GetMapping(value = "/experiment/snapshot", produces = "application/json")
++        public String snapshot() throws Exception {
++            var strategy = (FrontierPlacementStrategy) POSITIONS.get(serverSimulation);
++            var metrics = serverSimulation.metrics();
++            var performance = serverSimulation.performance().measurements();
++            var os = (com.sun.management.OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
++            return json(map("business", business(new Game(serverBoard, serverSimulation, strategy)),
++                    "elapsedMs", metrics.simulation().elapsedMs(), "cpuNanos", performance.cpuNanos(),
++                    "engineAllocatedBytes", performance.allocatedBytesPerAction() == null ? null : performance.allocatedBytesPerAction() * performance.actions(),
++                    "processCpuNanos", os.getProcessCpuTime(), "peakObservedHeapBytes", PEAK.get(),
++                    "colorsLayout", layout(serverBoard), "runtime", runtime()));
++        }
++        @PostMapping(value = "/experiment/finish", produces = "application/json")
++        public String finish() throws Exception {
++            String result = snapshot();
++            if (recording != null) { recording.stop(); recording.dump(serverProfile); recording.close(); recording = null; }
++            return result;
++        }
++    }
++}
+diff --git a/scripts/opti01/JfrSummary.java b/scripts/opti01/JfrSummary.java
+new file mode 100644
+index 0000000..7baf2fd
+--- /dev/null
++++ b/scripts/opti01/JfrSummary.java
+@@ -0,0 +1,60 @@
++package org.pixelwar.pixelwar.domain;
++
++import java.nio.file.Files;
++import java.nio.file.Path;
++import java.util.LinkedHashMap;
++import java.util.HashSet;
++import java.util.Map;
++import java.util.TreeMap;
++import jdk.jfr.consumer.RecordedEvent;
++import jdk.jfr.consumer.RecordedFrame;
++import jdk.jfr.consumer.RecordingFile;
++
++/** Exports real JFR events. Allocation weights are estimates, not exact allocation counts. */
++public final class JfrSummary {
++    public static void main(String[] args) throws Exception {
++        var eventCounts = new TreeMap<String, Long>();
++        var cpuExclusive = new TreeMap<String, Long>();
++        var cpuInclusive = new TreeMap<String, Long>();
++        var cpuStacks = new TreeMap<String, Long>();
++        var allocationClasses = new TreeMap<String, Long>();
++        var allocationStacks = new TreeMap<String, Long>();
++        var monitors = new TreeMap<String, Long>();
++        var monitorCounts = new TreeMap<String, Long>();
++        long gcNanos = 0, allocationSamples = 0;
++        try (var file = new RecordingFile(Path.of(args[0]))) {
++            while (file.hasMoreEvents()) {
++                RecordedEvent event = file.readEvent();
++                String type = event.getEventType().getName();
++                eventCounts.merge(type, 1L, Long::sum);
++                var stack = event.getStackTrace();
++                if (type.equals("jdk.ExecutionSample") && stack != null && !stack.getFrames().isEmpty()) {
++                    var frames = stack.getFrames();
++                    cpuExclusive.merge(method(frames.getFirst()), 1L, Long::sum);
++                    var seen = new HashSet<String>();
++                    for (var frame : frames) if (seen.add(method(frame))) cpuInclusive.merge(method(frame), 1L, Long::sum);
++                    cpuStacks.merge(frames.stream().map(JfrSummary::method).collect(java.util.stream.Collectors.joining(";")), 1L, Long::sum);
++                }
++                if (type.equals("jdk.ObjectAllocationSample")) {
++                    allocationSamples++;
++                    long weight = event.getLong("weight");
++                    allocationClasses.merge(event.getClass("objectClass").getName(), weight, Long::sum);
++                    if (stack != null) allocationStacks.merge(stack.getFrames().stream().map(JfrSummary::method).collect(java.util.stream.Collectors.joining(";")), weight, Long::sum);
++                }
++                if (type.equals("jdk.JavaMonitorEnter")) {
++                    String monitor = event.getClass("monitorClass").getName();
++                    monitors.merge(monitor, event.getDuration().toNanos(), Long::sum);
++                    monitorCounts.merge(monitor, 1L, Long::sum);
++                }
++                if (type.equals("jdk.GarbageCollection")) gcNanos += event.getDuration().toNanos();
++            }
++        }
++        Files.writeString(Path.of(args[1]), BoardExperiment.json(BoardExperiment.map(
++                "recording", Path.of(args[0]).getFileName().toString(), "eventCounts", eventCounts,
++                "cpuExclusiveSamples", cpuExclusive, "cpuInclusiveSamples", cpuInclusive, "cpuStacks", cpuStacks,
++                "allocationSamples", allocationSamples, "allocationEstimatedBytesByClass", allocationClasses,
++                "allocationEstimatedBytesByStack", allocationStacks, "monitorWaitNanos", monitors, "monitorEvents", monitorCounts,
++                "gcPauseEventDurationNanos", gcNanos, "monitorThresholdMillis", 1)));
++    }
++    private static String method(RecordedFrame frame) { return frame.getMethod().getType().getName() + "." + frame.getMethod().getName(); }
++}
+diff --git a/scripts/opti01/StorageAgent.java b/scripts/opti01/StorageAgent.java
+new file mode 100644
+index 0000000..e046262
+--- /dev/null
++++ b/scripts/opti01/StorageAgent.java
+@@ -0,0 +1,9 @@
++package org.pixelwar.pixelwar.domain;
++
++import java.lang.instrument.Instrumentation;
++
++/** Measures only the arrays storing colors; shared enum singleton objects are excluded. */
++public final class StorageAgent {
++    public static volatile Instrumentation instrumentation;
++    public static void premain(String args, Instrumentation value) { instrumentation = value; }
++}
+diff --git a/src/main/java/org/pixelwar/pixelwar/HttpPerformanceFilter.java b/src/main/java/org/pixelwar/pixelwar/HttpPerformanceFilter.java
+new file mode 100644
+index 0000000..c549342
+--- /dev/null
++++ b/src/main/java/org/pixelwar/pixelwar/HttpPerformanceFilter.java
+@@ -0,0 +1,72 @@
++package org.pixelwar.pixelwar;
++
++import jakarta.servlet.FilterChain;
++import jakarta.servlet.ServletException;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
++import java.io.IOException;
++import java.util.Arrays;
++import org.pixelwar.pixelwar.domain.PerformanceTracker;
++import org.pixelwar.pixelwar.domain.Simulation;
++import org.springframework.stereotype.Component;
++import org.springframework.web.filter.OncePerRequestFilter;
++
++/** Bounded sliding windows of completed API requests, including controller waits and serialization. */
++@Component
++public final class HttpPerformanceFilter extends OncePerRequestFilter {
++    private static final String EPOCH_ATTRIBUTE = HttpPerformanceFilter.class.getName() + ".epoch";
++    public record Percentiles(int samples, Long p95Nanos, Long p99Nanos) {}
++    public record Snapshot(Percentiles reads, Percentiles commands, Long completedRequestsBlockedNanos, int windowCapacity) {}
++    private final Window reads = new Window(512), commands = new Window(512);
++    private final PerformanceTracker.Probe probe = PerformanceTracker.jvmProbe();
++    private final Simulation simulation;
++    private long generation, blockedNanos;
++    private boolean blockedSupported;
++    public HttpPerformanceFilter(Simulation simulation) { this.simulation = simulation; }
++
++    @Override protected boolean shouldNotFilter(HttpServletRequest request) { return !request.getRequestURI().startsWith("/api/"); }
++    @Override protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
++            throws ServletException, IOException {
++        long epoch;
++        synchronized (this) { epoch = generation; }
++        long thread = Thread.currentThread().threadId(), blockedBefore = probe.blockedMillis(thread), start = System.nanoTime();
++        try { chain.doFilter(request, response); }
++        finally {
++            long duration = System.nanoTime() - start, blockedAfter = probe.blockedMillis(thread);
++            var resetEpoch = request.getAttribute(EPOCH_ATTRIBUTE);
++            Long completedAt = simulation == null ? null : simulation.trialCompletedAtNanos();
++            if (completedAt == null || start <= completedAt) {
++                record(resetEpoch instanceof Long value ? value : epoch, "GET".equals(request.getMethod()), duration, blockedBefore, blockedAfter);
++            }
++        }
++    }
++    synchronized void record(long epoch, boolean read, long duration, long before, long after) {
++        if (epoch != generation) return;
++        (read ? reads : commands).add(duration);
++        if (before >= 0 && after >= before) { blockedSupported = true; blockedNanos += (after - before) * 1_000_000L; }
++    }
++    public synchronized void reset() {
++        generation++;
++        reads.clear(); commands.clear(); blockedNanos = 0; blockedSupported = false;
++    }
++    public synchronized void resetIncluding(HttpServletRequest request) {
++        reset();
++        request.setAttribute(EPOCH_ATTRIBUTE, generation);
++    }
++    public synchronized Snapshot snapshot() {
++        return new Snapshot(reads.snapshot(), commands.snapshot(), blockedSupported ? blockedNanos : null, 512);
++    }
++    static final class Window {
++        private final long[] durations;
++        private int size, next;
++        Window(int capacity) { durations = new long[capacity]; }
++        void add(long nanos) { durations[next] = nanos; next = (next + 1) % durations.length; size = Math.min(size + 1, durations.length); }
++        void clear() { size = next = 0; }
++        Percentiles snapshot() {
++            if (size == 0) return new Percentiles(0, null, null);
++            var sorted = Arrays.copyOf(durations, size);
++            Arrays.sort(sorted);
++            return new Percentiles(size, sorted[(int) Math.ceil(size * .95) - 1], sorted[(int) Math.ceil(size * .99) - 1]);
++        }
++    }
++}
+diff --git a/src/main/java/org/pixelwar/pixelwar/domain/PerformanceTracker.java b/src/main/java/org/pixelwar/pixelwar/domain/PerformanceTracker.java
+new file mode 100644
+index 0000000..a33dcc7
+--- /dev/null
++++ b/src/main/java/org/pixelwar/pixelwar/domain/PerformanceTracker.java
+@@ -0,0 +1,93 @@
++package org.pixelwar.pixelwar.domain;
++
++import java.lang.management.ManagementFactory;
++
++/** Engine resources only. Samples at boundaries and every 100 ms, never per placement. */
++public final class PerformanceTracker {
++    public interface Probe {
++        long cpuNanos(long threadId);
++        long allocatedBytes(long threadId);
++        long blockedMillis(long threadId);
++        long heapBytes();
++    }
++    public record Snapshot(long actions, long attempts, long elapsedNanos, double attemptsPerSecond,
++                           Long cpuNanos, Double allocatedBytesPerAction, long peakObservedHeapBytes,
++                           Long engineBlockedNanos) {}
++    private final Probe probe;
++    private long threadId = -1, startedAt = -1, lastSampleAt, peakHeap;
++    private long cpu, allocated, blocked, previousCpu = -1, previousAllocated = -1, previousBlocked = -1;
++    private boolean active, cpuSupported, allocationSupported, contentionSupported;
++
++    public PerformanceTracker(Probe probe) { this.probe = probe; reset(); }
++
++    public void reset() {
++        threadId = startedAt = -1;
++        active = cpuSupported = allocationSupported = contentionSupported = false;
++        cpu = allocated = blocked = lastSampleAt = 0;
++        previousCpu = previousAllocated = previousBlocked = -1;
++        peakHeap = probe.heapBytes();
++    }
++    public void beginAction(long elapsedNanos) {
++        long current = Thread.currentThread().threadId();
++        if (startedAt < 0) startedAt = elapsedNanos;
++        if (!active || current != threadId) {
++            if (active) sample(elapsedNanos);
++            threadId = current;
++            previousCpu = probe.cpuNanos(threadId);
++            previousAllocated = probe.allocatedBytes(threadId);
++            previousBlocked = probe.blockedMillis(threadId);
++            cpuSupported = previousCpu >= 0;
++            allocationSupported = previousAllocated >= 0;
++            contentionSupported = previousBlocked >= 0;
++            active = true;
++        }
++    }
++    public void tick(long elapsedNanos) {
++        if (elapsedNanos - lastSampleAt >= 100_000_000L) sample(elapsedNanos);
++    }
++    public void pause(long elapsedNanos) {
++        if (active) sample(elapsedNanos);
++        active = false;
++    }
++    private void sample(long elapsedNanos) {
++        peakHeap = Math.max(peakHeap, probe.heapBytes());
++        lastSampleAt = elapsedNanos;
++        if (!active) return;
++        long nextCpu = probe.cpuNanos(threadId), nextAllocated = probe.allocatedBytes(threadId), nextBlocked = probe.blockedMillis(threadId);
++        if (previousCpu >= 0 && nextCpu >= previousCpu) cpu += nextCpu - previousCpu;
++        if (previousAllocated >= 0 && nextAllocated >= previousAllocated) allocated += nextAllocated - previousAllocated;
++        if (previousBlocked >= 0 && nextBlocked >= previousBlocked) blocked += nextBlocked - previousBlocked;
++        cpuSupported &= nextCpu >= 0;
++        allocationSupported &= nextAllocated >= 0;
++        contentionSupported &= nextBlocked >= 0;
++        previousCpu = nextCpu; previousAllocated = nextAllocated; previousBlocked = nextBlocked;
++    }
++    public Snapshot snapshot(long elapsedNanos, long actions, long attempts) {
++        if (active) sample(elapsedNanos);
++        long duration = startedAt < 0 ? 0 : Math.max(0, elapsedNanos - startedAt);
++        return new Snapshot(actions, attempts, duration, duration == 0 ? 0 : attempts * 1e9 / duration,
++                actions == 0 || !cpuSupported ? null : cpu,
++                actions == 0 || !allocationSupported ? null : allocated / (double) actions, peakHeap,
++                actions == 0 || !contentionSupported ? null : blocked * 1_000_000L);
++    }
++    public static Probe jvmProbe() { return JvmProbe.INSTANCE; }
++    private static final class JvmProbe implements Probe {
++        static final JvmProbe INSTANCE = new JvmProbe();
++        private final java.lang.management.ThreadMXBean threads = ManagementFactory.getThreadMXBean();
++        private final com.sun.management.ThreadMXBean extended = threads instanceof com.sun.management.ThreadMXBean bean ? bean : null;
++        private final java.lang.management.MemoryMXBean memory = ManagementFactory.getMemoryMXBean();
++        private JvmProbe() {
++            try { if (threads.isThreadCpuTimeSupported()) threads.setThreadCpuTimeEnabled(true); } catch (UnsupportedOperationException | SecurityException ignored) {}
++            try { if (threads.isThreadContentionMonitoringSupported()) threads.setThreadContentionMonitoringEnabled(true); } catch (UnsupportedOperationException | SecurityException ignored) {}
++            try { if (extended != null && extended.isThreadAllocatedMemorySupported()) extended.setThreadAllocatedMemoryEnabled(true); } catch (UnsupportedOperationException | SecurityException ignored) {}
++        }
++        public long cpuNanos(long id) { return threads.isThreadCpuTimeSupported() && threads.isThreadCpuTimeEnabled() ? threads.getThreadCpuTime(id) : -1; }
++        public long allocatedBytes(long id) { return extended != null && extended.isThreadAllocatedMemorySupported() && extended.isThreadAllocatedMemoryEnabled() ? extended.getThreadAllocatedBytes(id) : -1; }
++        public long blockedMillis(long id) {
++            if (!threads.isThreadContentionMonitoringSupported() || !threads.isThreadContentionMonitoringEnabled()) return -1;
++            var info = threads.getThreadInfo(id);
++            return info == null ? -1 : info.getBlockedTime();
++        }
++        public long heapBytes() { return memory.getHeapMemoryUsage().getUsed(); }
++    }
++}
+diff --git a/src/test/java/org/pixelwar/pixelwar/HttpPerformanceFilterTests.java b/src/test/java/org/pixelwar/pixelwar/HttpPerformanceFilterTests.java
+new file mode 100644
+index 0000000..45fa9eb
+--- /dev/null
++++ b/src/test/java/org/pixelwar/pixelwar/HttpPerformanceFilterTests.java
+@@ -0,0 +1,85 @@
++package org.pixelwar.pixelwar;
++
++import org.junit.jupiter.api.Test;
++import static org.junit.jupiter.api.Assertions.*;
++import static org.mockito.Mockito.*;
++import java.util.concurrent.CountDownLatch;
++import java.util.concurrent.TimeUnit;
++import org.pixelwar.pixelwar.domain.PerformanceTracker;
++import org.pixelwar.pixelwar.domain.Simulation;
++import org.springframework.mock.web.MockHttpServletRequest;
++import org.springframework.mock.web.MockHttpServletResponse;
++
++class HttpPerformanceFilterTests {
++    @Test void requestsAfterTrialCompletionDoNotDiluteItsPercentiles() throws Exception {
++        var simulation = mock(Simulation.class);
++        when(simulation.trialCompletedAtNanos()).thenReturn(System.nanoTime() - 1_000_000);
++        var filter = new HttpPerformanceFilter(simulation);
++        filter.doFilter(new MockHttpServletRequest("GET", "/api/performance"), new MockHttpServletResponse(), (request, response) -> {});
++        assertEquals(0, filter.snapshot().reads().samples());
++        when(simulation.trialCompletedAtNanos()).thenReturn(null);
++        filter.doFilter(new MockHttpServletRequest("GET", "/api/performance"), new MockHttpServletResponse(), (request, response) -> {});
++        assertEquals(1, filter.snapshot().reads().samples());
++    }
++
++    @Test void realMonitorContentionIsProfiledAndIncludedInHttpLatency() throws Exception {
++        org.junit.jupiter.api.Assumptions.assumeTrue(PerformanceTracker.jvmProbe().blockedMillis(Thread.currentThread().threadId()) >= 0);
++        var lock = new Object();
++        var acquired = new CountDownLatch(1);
++        var release = new CountDownLatch(1);
++        var holder = new Thread(() -> {
++            synchronized (lock) {
++                acquired.countDown();
++                try { release.await(5, TimeUnit.SECONDS); } catch (InterruptedException exception) { Thread.currentThread().interrupt(); }
++            }
++        });
++        holder.start();
++        assertTrue(acquired.await(2, TimeUnit.SECONDS));
++        var releaser = new Thread(() -> {
++            try { Thread.sleep(50); } catch (InterruptedException exception) { Thread.currentThread().interrupt(); }
++            release.countDown();
++        });
++        try {
++            var filter = new HttpPerformanceFilter(null);
++            releaser.start();
++            filter.doFilter(new MockHttpServletRequest("GET", "/api/performance"), new MockHttpServletResponse(), (request, response) -> {
++                synchronized (lock) { /* A controller blocked by the engine monitor. */ }
++            });
++            assertTrue(filter.snapshot().completedRequestsBlockedNanos() > 0);
++            // ThreadMXBean rounds cumulative blocked time to milliseconds, unlike nanoTime.
++            assertTrue(filter.snapshot().reads().p95Nanos() + 1_000_000 >= filter.snapshot().completedRequestsBlockedNanos());
++        } finally {
++            release.countDown(); holder.join(2000); releaser.join(2000);
++        }
++    }
++    @Test void percentilesUseNearestRankAndBoundedRecentWindow() {
++        var window = new HttpPerformanceFilter.Window(100);
++        assertNull(window.snapshot().p95Nanos());
++        assertEquals(0, window.snapshot().samples());
++        for (int i = 1; i <= 100; i++) window.add(i);
++        assertEquals(95L, window.snapshot().p95Nanos());
++        assertEquals(99L, window.snapshot().p99Nanos());
++        for (int i = 1; i <= 100; i++) window.add(200);
++        assertEquals(100, window.snapshot().samples());
++        assertEquals(200L, window.snapshot().p95Nanos());
++        assertEquals(200L, window.snapshot().p99Nanos());
++        window.clear();
++        assertEquals(0, window.snapshot().samples());
++    }
++    @Test void resetRejectsRequestsFromPreviousGenerationAndSeparatesCommandsFromReads() {
++        var filter = new HttpPerformanceFilter(null);
++        filter.record(0, true, 100, 10, 12);
++        filter.record(0, false, 200, 12, 15);
++        var result = filter.snapshot();
++        assertEquals(100L, result.reads().p95Nanos());
++        assertEquals(200L, result.commands().p99Nanos());
++        assertEquals(5_000_000L, result.completedRequestsBlockedNanos());
++        filter.reset();
++        filter.record(0, true, 999, 0, 999);
++        assertEquals(0, filter.snapshot().reads().samples());
++        assertNull(filter.snapshot().completedRequestsBlockedNanos());
++        filter.record(1, true, 20, -1, -1);
++        assertEquals(20L, filter.snapshot().reads().p95Nanos());
++        assertNull(filter.snapshot().completedRequestsBlockedNanos());
++    }
++}
+diff --git a/src/test/java/org/pixelwar/pixelwar/PerformanceApiTests.java b/src/test/java/org/pixelwar/pixelwar/PerformanceApiTests.java
+new file mode 100644
+index 0000000..ae46025
+--- /dev/null
++++ b/src/test/java/org/pixelwar/pixelwar/PerformanceApiTests.java
+@@ -0,0 +1,44 @@
++package org.pixelwar.pixelwar;
++
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.pixelwar.pixelwar.domain.Simulation;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.context.SpringBootTest;
++import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
++import org.springframework.test.web.servlet.MockMvc;
++import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
++import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
++
++@SpringBootTest(properties = {"pixelwar.board.width=20", "pixelwar.board.height=20", "pixelwar.stock.enabled=false"})
++@AutoConfigureMockMvc
++class PerformanceApiTests {
++    @Autowired MockMvc mvc;
++    @Autowired Simulation simulation;
++    @BeforeEach void reset() throws Exception { mvc.perform(post("/api/simulation/reset")).andExpect(status().isOk()); }
++    @Test void lightweightMetricsExposeOnlyMeasurementsAndHttpWindows() throws Exception {
++        mvc.perform(get("/api/performance")).andExpect(status().isOk())
++                .andExpect(jsonPath("$.engine.measurements.actions").value(0))
++                .andExpect(jsonPath("$.engine.measurements.allocatedBytesPerAction").isEmpty())
++                .andExpect(jsonPath("$.http.windowCapacity").value(512))
++                .andExpect(jsonPath("$.http.commands.samples").value(1))
++                .andExpect(jsonPath("$.engine.measurements.players").doesNotExist());
++        mvc.perform(get("/api/performance")).andExpect(jsonPath("$.http.reads.samples").value(1))
++                .andExpect(jsonPath("$.http.reads.p95Nanos").isNumber());
++    }
++    @Test void trialApiValidatesAndStopsAtExactCount() throws Exception {
++        mvc.perform(post("/api/simulation/trial").contentType("application/json").content("{\"actions\":0,\"seed\":42}"))
++                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").exists());
++        mvc.perform(post("/api/simulation/trial").contentType("application/json").content("{\"actions\":17,\"seed\":42}"))
++                .andExpect(status().isOk());
++        org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(5), () -> {
++            while (!simulation.performance().completed()) Thread.sleep(2);
++        });
++        mvc.perform(get("/api/performance")).andExpect(jsonPath("$.engine.completed").value(true))
++                .andExpect(jsonPath("$.engine.measurements.actions").value(17))
++                .andExpect(jsonPath("$.engine.seed").value(42))
++                .andExpect(jsonPath("$.engine.measurements.cpuNanos").isNumber())
++                .andExpect(jsonPath("$.engine.measurements.allocatedBytesPerAction").isNumber());
++        mvc.perform(post("/api/simulation/resume")).andExpect(status().isConflict());
++    }
++}
+diff --git a/src/test/java/org/pixelwar/pixelwar/domain/FixedWorkloadTests.java b/src/test/java/org/pixelwar/pixelwar/domain/FixedWorkloadTests.java
+new file mode 100644
+index 0000000..9c9fd21
+--- /dev/null
++++ b/src/test/java/org/pixelwar/pixelwar/domain/FixedWorkloadTests.java
+@@ -0,0 +1,83 @@
++package org.pixelwar.pixelwar.domain;
++
++import java.util.ArrayList;
++import java.util.List;
++import java.util.concurrent.ScheduledExecutorService;
++import java.util.concurrent.ScheduledFuture;
++import java.util.concurrent.TimeUnit;
++import java.util.concurrent.atomic.AtomicLong;
++import org.junit.jupiter.api.Test;
++import static org.junit.jupiter.api.Assertions.*;
++import static org.mockito.Mockito.*;
++import static org.mockito.ArgumentMatchers.*;
++
++class FixedWorkloadTests {
++    private record Fixture(Simulation simulation, List<Runnable> tasks, AtomicLong clock) implements AutoCloseable {
++        public void close() { simulation.close(); }
++    }
++    private Fixture fixture(boolean stock) {
++        var tasks = new ArrayList<Runnable>();
++        var scheduler = mock(ScheduledExecutorService.class);
++        when(scheduler.scheduleAtFixedRate(any(Runnable.class), anyLong(), anyLong(), eq(TimeUnit.NANOSECONDS)))
++                .thenAnswer(call -> { tasks.add(call.getArgument(0)); return mock(ScheduledFuture.class); });
++        var config = new Simulation.Configuration(12, 12, 10, 12, 12, new Stock.Configuration(10, 100, 10, 1000, stock), 3, true);
++        var clock = new AtomicLong();
++        return new Fixture(new Simulation(new Board(12, 12), config, new RandomPlacementStrategy(new java.util.Random(1)), clock::get, scheduler), tasks, clock);
++    }
++    @Test void trialStopsAtExactNMidRoundAndSeedReproducesBoardAndCounters() {
++        try (var fixture = fixture(false)) {
++            var simulation = fixture.simulation();
++            simulation.startTrial(17, 42);
++            for (int i = 0; i < 8; i++) { fixture.clock().addAndGet(100_000); fixture.tasks().getFirst().run(); }
++            var first = simulation.performance();
++            assertTrue(first.completed());
++            assertEquals(17, first.measurements().actions());
++            assertEquals(51, first.measurements().attempts());
++            assertEquals(Simulation.State.PAUSED, simulation.status().state());
++            assertThrows(IllegalStateException.class, simulation::resume);
++            var preview = simulation.preview();
++            var scores = simulation.scores();
++            simulation.startTrial(17, 42);
++            for (int i = 0; i < 8; i++) { fixture.clock().addAndGet(100_000); fixture.tasks().get(1).run(); }
++            assertEquals(scores, simulation.scores());
++            assertArrayEquals(preview.cells(), simulation.preview().cells());
++            assertEquals(first.measurements().actions(), simulation.performance().measurements().actions());
++            fixture.tasks().getFirst().run(); // Old generation must not alter the new trial.
++            assertEquals(17, simulation.performance().measurements().actions());
++            simulation.reset();
++            assertNull(simulation.performance().targetActions());
++            assertEquals(0, simulation.performance().measurements().actions());
++            assertFalse(simulation.performance().completed());
++        }
++    }
++    @Test void pauseDoesNotCompleteTrialAndExcludesPausedTime() {
++        try (var fixture = fixture(false)) {
++            fixture.simulation().startTrial(100, 42);
++            fixture.tasks().getFirst().run();
++            fixture.clock().set(500);
++            fixture.simulation().pause();
++            var before = fixture.simulation().performance();
++            fixture.clock().set(1_000_000);
++            assertEquals(before, fixture.simulation().performance());
++            fixture.simulation().resume();
++            fixture.clock().set(1_000_500);
++            fixture.tasks().get(1).run();
++            fixture.simulation().pause();
++            assertEquals(1000, fixture.simulation().performance().measurements().elapsedNanos());
++            assertFalse(fixture.simulation().performance().completed());
++        }
++    }
++    @Test void invalidTrialDoesNotResetExistingSimulationAndStockModeIsExplicitlyRejected() {
++        try (var fixture = fixture(false)) {
++            fixture.simulation().start(); fixture.tasks().getFirst().run();
++            var before = fixture.simulation().status();
++            assertThrows(IllegalArgumentException.class, () -> fixture.simulation().startTrial(0, 42));
++            assertThrows(IllegalArgumentException.class, () -> fixture.simulation().startTrial(1_000_000_001L, 42));
++            assertEquals(before, fixture.simulation().status());
++        }
++        try (var fixture = fixture(true)) {
++            assertThrows(IllegalStateException.class, () -> fixture.simulation().startTrial(10, 42));
++            assertEquals(Simulation.State.STOPPED, fixture.simulation().status().state());
++        }
++    }
++}
+diff --git a/src/test/java/org/pixelwar/pixelwar/domain/PerformanceTrackerTests.java b/src/test/java/org/pixelwar/pixelwar/domain/PerformanceTrackerTests.java
+new file mode 100644
+index 0000000..463bb42
+--- /dev/null
++++ b/src/test/java/org/pixelwar/pixelwar/domain/PerformanceTrackerTests.java
+@@ -0,0 +1,54 @@
++package org.pixelwar.pixelwar.domain;
++
++import org.junit.jupiter.api.Test;
++import static org.junit.jupiter.api.Assertions.*;
++
++class PerformanceTrackerTests {
++    private static final class Probe implements PerformanceTracker.Probe {
++        long cpu = 100, allocated = 1000, blocked = 10, heap = 2000;
++        public long cpuNanos(long id) { return cpu; }
++        public long allocatedBytes(long id) { return allocated; }
++        public long blockedMillis(long id) { return blocked; }
++        public long heapBytes() { return heap; }
++    }
++    @Test void deltasPeakAndPauseExcludeResourcesSpentOutsideEngineActivity() {
++        var probe = new Probe();
++        var tracker = new PerformanceTracker(probe);
++        tracker.beginAction(100);
++        probe.cpu += 50; probe.allocated += 400; probe.blocked += 2; probe.heap = 5000;
++        tracker.tick(100_000_100);
++        probe.heap = 3000;
++        var result = tracker.snapshot(1_000_000_100, 4, 40);
++        assertEquals(1_000_000_000, result.elapsedNanos());
++        assertEquals(40, result.attemptsPerSecond());
++        assertEquals(50L, result.cpuNanos());
++        assertEquals(100.0, result.allocatedBytesPerAction());
++        assertEquals(2_000_000L, result.engineBlockedNanos());
++        assertEquals(5000, result.peakObservedHeapBytes());
++        tracker.pause(1_000_000_100);
++        probe.cpu += 1000; probe.allocated += 10000; probe.blocked += 100;
++        assertEquals(result, tracker.snapshot(1_000_000_100, 4, 40));
++        tracker.beginAction(1_000_000_100);
++        probe.cpu += 10; probe.allocated += 40;
++        tracker.pause(2_000_000_100L);
++        var resumed = tracker.snapshot(2_000_000_100L, 5, 50);
++        assertEquals(60L, resumed.cpuNanos());
++        assertEquals(88.0, resumed.allocatedBytesPerAction());
++        assertEquals(2_000_000L, resumed.engineBlockedNanos());
++    }
++    @Test void unsupportedProbesAreNullAndResetStartsANewHeapObservation() {
++        var probe = new Probe(); probe.cpu = probe.allocated = probe.blocked = -1;
++        var tracker = new PerformanceTracker(probe);
++        tracker.beginAction(0);
++        var result = tracker.snapshot(1_000_000, 1, 10);
++        assertNull(result.cpuNanos());
++        assertNull(result.allocatedBytesPerAction());
++        assertNull(result.engineBlockedNanos());
++        probe.heap = 1000;
++        tracker.reset();
++        result = tracker.snapshot(0, 0, 0);
++        assertEquals(1000, result.peakObservedHeapBytes());
++        assertEquals(0, result.elapsedNanos());
++        assertEquals(0, result.attemptsPerSecond());
++    }
++}

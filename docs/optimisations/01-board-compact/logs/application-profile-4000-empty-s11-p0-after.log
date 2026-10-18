@@ -1,0 +1,27 @@
+23:28:59.272 [main] INFO org.pixelwar.pixelwar.domain.Simulation -- Board 4000 x 4000, actions every 10 ns, max 10 pixels/action, conversions true
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::                (v4.1.1)
+
+2026-10-18T23:28:59.684+02:00  INFO 29668 --- [opti-01] [           main] o.p.pixelwar.domain.BoardExperiment      : Starting BoardExperiment using Java 27 with PID 29668 (C:\Users\gui35\ideaProjects\pixel-war\target\opti-01\results\builds\after\source\target\experiment-classes started by gui35 in C:\Users\gui35\ideaProjects\pixel-war\target\opti-01\results\builds\after\source)
+2026-10-18T23:28:59.686+02:00  INFO 29668 --- [opti-01] [           main] o.p.pixelwar.domain.BoardExperiment      : No active profile set, falling back to 1 default profile: "default"
+2026-10-18T23:29:00.369+02:00  INFO 29668 --- [opti-01] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 64507 (http)
+2026-10-18T23:29:00.379+02:00  INFO 29668 --- [opti-01] [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-18T23:29:00.379+02:00  INFO 29668 --- [opti-01] [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-18T23:29:00.412+02:00  INFO 29668 --- [opti-01] [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 697 ms
+2026-10-18T23:29:00.486+02:00  INFO 29668 --- [opti-01] [           main] o.s.b.w.a.WelcomePageHandlerMapping      : Adding welcome page: class path resource [static/index.html]
+2026-10-18T23:29:00.679+02:00  INFO 29668 --- [opti-01] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 64507 (http) with context path '/'
+2026-10-18T23:29:00.686+02:00  INFO 29668 --- [opti-01] [           main] o.p.pixelwar.domain.BoardExperiment      : Started BoardExperiment in 1.311 seconds (process running for 1.618)
+2026-10-18T23:29:00.860+02:00  INFO 29668 --- [opti-01] [io-64507-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-10-18T23:29:00.861+02:00  INFO 29668 --- [opti-01] [io-64507-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2026-10-18T23:29:00.862+02:00  INFO 29668 --- [opti-01] [io-64507-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 1 ms
+2026-10-18T23:29:00.894+02:00  INFO 29668 --- [opti-01] [io-64507-exec-1] o.pixelwar.pixelwar.domain.Simulation    : Simulation started
+2026-10-18T23:29:05.977+02:00  INFO 29668 --- [opti-01] [io-64507-exec-2] o.pixelwar.pixelwar.domain.Simulation    : Simulation paused
+2026-10-18T23:29:07.293+02:00  INFO 29668 --- [opti-01] [io-64507-exec-8] o.pixelwar.pixelwar.domain.Simulation    : Simulation resumed
+2026-10-18T23:29:27.297+02:00  INFO 29668 --- [opti-01] [o-64507-exec-10] o.pixelwar.pixelwar.domain.Simulation    : Simulation paused

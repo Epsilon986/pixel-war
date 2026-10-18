@@ -21,7 +21,7 @@ public final class JfrSummary {
         var allocationStacks = new TreeMap<String, Long>();
         var monitors = new TreeMap<String, Long>();
         var monitorCounts = new TreeMap<String, Long>();
-        long gcNanos = 0, allocationSamples = 0;
+        long gcNanos = 0, gcPauseNanos = 0, allocationSamples = 0;
         try (var file = new RecordingFile(Path.of(args[0]))) {
             while (file.hasMoreEvents()) {
                 RecordedEvent event = file.readEvent();
@@ -47,6 +47,7 @@ public final class JfrSummary {
                     monitorCounts.merge(monitor, 1L, Long::sum);
                 }
                 if (type.equals("jdk.GarbageCollection")) gcNanos += event.getDuration().toNanos();
+                if (type.equals("jdk.GCPhasePause")) gcPauseNanos += event.getDuration().toNanos();
             }
         }
         Files.writeString(Path.of(args[1]), BoardExperiment.json(BoardExperiment.map(
@@ -54,7 +55,7 @@ public final class JfrSummary {
                 "cpuExclusiveSamples", cpuExclusive, "cpuInclusiveSamples", cpuInclusive, "cpuStacks", cpuStacks,
                 "allocationSamples", allocationSamples, "allocationEstimatedBytesByClass", allocationClasses,
                 "allocationEstimatedBytesByStack", allocationStacks, "monitorWaitNanos", monitors, "monitorEvents", monitorCounts,
-                "gcPauseEventDurationNanos", gcNanos, "monitorThresholdMillis", 1)));
+                "gcCollectionDurationNanos", gcNanos, "gcStopTheWorldPauseNanos", gcPauseNanos, "monitorThresholdMillis", 1)));
     }
     private static String method(RecordedFrame frame) { return frame.getMethod().getType().getName() + "." + frame.getMethod().getName(); }
 }

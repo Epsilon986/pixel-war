@@ -1,0 +1,2 @@
+﻿Harness incident 2026-10-18: Windows denied rebinding fixed port 18086 after the first application trial. No matching after trial had started. The pilot observation and logs are preserved under raw/pilots and logs/pilots, excluded from main statistics.
+Correction: one OS-assigned free port for each server JVM. Endpoints, concurrency, frequency, Java, heap and window duration are unchanged. All three application pairs are rerun.
