@@ -14,7 +14,19 @@
   <p id="error" role="alert"></p><p id="configuration"></p>
   <div class="layout">
     <section><h2>Board</h2><canvas id="board" width="200" height="200" aria-label="Aperçu du board"></canvas><p id="dimensions"></p><p>Un échantillon du board complet : certains pixels ne sont pas visibles dans cet aperçu.</p></section>
-    <section><h2>Joueurs et stocks</h2><div id="scores"></div><h2>Métriques</h2><dl id="metrics"></dl></section>
+    <section><h2>Joueurs et stocks</h2><div id="scores"></div></section>
   </div>
-  <p>Actualisation une seconde après chaque lecture. Débits moyens sur le temps actif ; latence de l’action incluant l’attente du verrou.</p>
+  <section class="performance" aria-labelledby="performance-title">
+    <div class="section-heading"><h2 id="performance-title">Mesures de performance</h2><span id="trial-state">Simulation libre</span></div>
+    <form id="trial-form" class="trial-form">
+      <label>Nombre d’actions<input id="trial-actions" name="actions" type="number" min="1" max="1000000000" step="1" value="100000" required></label>
+      <label>Graine aléatoire<input id="trial-seed" name="seed" type="number" min="-2147483648" max="2147483647" step="1" value="42" required></label>
+      <button id="trial-start" type="submit">Lancer un nouvel essai</button>
+    </form>
+    <p id="trial-help">L’essai réinitialise le plateau et s’arrête après exactement N actions. Le polling reste actif.</p>
+    <progress id="trial-progress" max="1" value="0" aria-label="Progression de l’essai" hidden></progress>
+    <div id="metrics" class="metric-grid" aria-live="off"></div>
+    <details class="measurement-note"><summary>Portée des mesures</summary><p>CPU et allocations : thread moteur. Heap JVM échantillonnée pendant l’activité à intervalle de 100 ms, aux lectures et aux bornes de l’essai. Verrous : profil de contention JVM, précision 1 ms. HTTP : durée serveur, attente et sérialisation comprises, sur les 512 dernières requêtes de chaque type. Après un essai, les nouvelles requêtes ne modifient plus son résultat. En simulation libre, les fenêtres restent glissantes.</p></details>
+  </section>
+  <p>Actualisation une seconde après chaque lecture. Reset efface les mesures ; les pauses sont exclues du temps actif.</p>
 </main></body></html>

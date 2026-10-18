@@ -58,15 +58,32 @@ try {
     scores: document.getElementById('scores').textContent,
     configuration: document.getElementById('configuration').textContent,
     canvasWidth: document.getElementById('board').width })`);
-  if (snapshot.error || errors.length || !snapshot.scores.includes('stock 100 / 1')) throw new Error(JSON.stringify({ snapshot, errors }));
+  if (snapshot.error || errors.length || !snapshot.scores.includes('Player 1')) throw new Error(JSON.stringify({ snapshot, errors }));
+  const trial = await evaluate(`(async () => {
+    if (document.querySelectorAll('.metric-card').length !== 7) throw new Error('Expected seven performance metrics');
+    document.getElementById('trial-actions').value = '10003';
+    document.getElementById('trial-seed').value = '42';
+    document.getElementById('trial-form').requestSubmit();
+    const until = Date.now() + 30000;
+    while (Date.now() < until) {
+      if (document.getElementById('trial-state').textContent.includes('Terminé') && !document.getElementById('trial-start').disabled) break;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    const data = await (await fetch('/api/performance')).json();
+    if (!data.engine.completed || data.engine.measurements.actions !== 10003) throw new Error('Fixed workload did not finish at N actions');
+    if (!document.querySelector('[data-action="resume"]').disabled) throw new Error('Completed trial must not resume');
+    const text = document.getElementById('metrics').textContent;
+    if (text.includes('NaN') || text.includes('undefined') || text.includes('Infinity')) throw new Error('Invalid metric value');
+    return { label: document.getElementById('trial-state').textContent, metrics: text, samples: data.http.reads.samples };
+  })()`);
   const screenshot = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
-  await writeFile('target/v2-desktop.png', Buffer.from(screenshot.data, 'base64'));
+  await writeFile('target/metrics-desktop.png', Buffer.from(screenshot.data, 'base64'));
   await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   const overflow = await evaluate('document.documentElement.scrollWidth > window.innerWidth');
   if (overflow) throw new Error('Mobile layout overflows horizontally');
   const mobile = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
-  await writeFile('target/v2-mobile.png', Buffer.from(mobile.data, 'base64'));
-  console.log(JSON.stringify({ ...snapshot, browserErrors: errors, desktopScreenshot: 'target/v2-desktop.png', mobileScreenshot: 'target/v2-mobile.png' }));
+  await writeFile('target/metrics-mobile.png', Buffer.from(mobile.data, 'base64'));
+  console.log(JSON.stringify({ ...snapshot, trial, browserErrors: errors, desktopScreenshot: 'target/metrics-desktop.png', mobileScreenshot: 'target/metrics-mobile.png' }));
 } finally {
   socket.close();
 }

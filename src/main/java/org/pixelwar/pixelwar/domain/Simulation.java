@@ -63,6 +63,7 @@ public final class Simulation implements AutoCloseable {
                           long conversionPasses, long conversions, double conversionsPerSecond, long boardChanges,
                           double boardChangesPerSecond, Duration conversionDurationNanos, Board.FrontierMetrics frontiers) {}
     public record Preview(int width, int height, CellState[][] cells) {}
+    public record Performance(Long targetActions, Long seed, boolean completed, String failure, PerformanceTracker.Snapshot measurements) {}
 
     private static final Logger LOG = LoggerFactory.getLogger(Simulation.class);
     private final Board board;
@@ -70,7 +71,12 @@ public final class Simulation implements AutoCloseable {
     private final List<Player> players;
     private final Stock[] stocks = new Stock[4];
     private final boolean[] established = new boolean[4], eliminated = new boolean[4];
-    private final PlacementStrategy positions;
+    private PlacementStrategy positions;
+    private final PerformanceTracker performance = new PerformanceTracker(PerformanceTracker.jvmProbe());
+    private Long targetActions, workloadSeed;
+    private boolean workloadCompleted;
+    private volatile Long workloadCompletedAtNanos;
+    private String workloadFailure;
     private final LongSupplier clock;
     private final ScheduledExecutorService executor;
     private final NeighborConversion conversion = new NeighborConversion();
@@ -113,6 +119,7 @@ public final class Simulation implements AutoCloseable {
 
     public synchronized Status start() {
         if (closed) throw new IllegalStateException("Simulation is closed");
+        if (workloadCompleted) throw new IllegalStateException("Start a new trial or reset the completed trial");
         if (state == State.PAUSED) throw new IllegalStateException("Use resume for a paused simulation");
         if (state == State.RUNNING) return status();
         activate();
@@ -127,6 +134,7 @@ public final class Simulation implements AutoCloseable {
         return status();
     }
     public synchronized Status resume() {
+        if (workloadCompleted) throw new IllegalStateException("Start a new trial or reset the completed trial");
         if (state == State.RUNNING) return status();
         if (state != State.PAUSED) throw new IllegalStateException("Only a paused simulation can resume");
         activate();
@@ -150,6 +158,11 @@ public final class Simulation implements AutoCloseable {
         accumulatedNs = attempts = modifications = actions = emptyActions = latencyTotal = latencyMax = 0;
         conversionPasses = conversions = conversionTotal = conversionMax = 0;
         latencyMin = conversionMin = Long.MAX_VALUE;
+        targetActions = workloadSeed = null;
+        workloadCompleted = false;
+        workloadCompletedAtNanos = null;
+        workloadFailure = null;
+        performance.reset();
         LOG.info("Simulation reset");
         return status();
     }
@@ -167,6 +180,7 @@ public final class Simulation implements AutoCloseable {
         firstPlayer = (firstPlayer + 1) % players.size();
     }
     private void freeze(State next) {
+        performance.pause(elapsedNs());
         if (state == State.RUNNING) accumulatedNs += clock.getAsLong() - runningSince;
         state = next;
         generation++;
@@ -179,6 +193,7 @@ public final class Simulation implements AutoCloseable {
         long before = clock.getAsLong();
         synchronized (this) {
             if (state != State.RUNNING || generation != expectedGeneration || eliminated[index]) return;
+            performance.beginAction(elapsedNs());
             actions++;
             actionsByPlayer[index]++;
             try {
@@ -216,6 +231,7 @@ public final class Simulation implements AutoCloseable {
                 }
                 updateEliminations();
             } catch (RuntimeException exception) {
+                workloadFailure = exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage();
                 LOG.error("Player action failed; stopping simulation", exception);
                 freeze(State.STOPPED);
             } finally {
@@ -223,6 +239,12 @@ public final class Simulation implements AutoCloseable {
                 latencyTotal += duration;
                 latencyMin = Math.min(latencyMin, duration);
                 latencyMax = Math.max(latencyMax, duration);
+                performance.tick(elapsedNs());
+                if (state == State.RUNNING && targetActions != null && actions == targetActions) {
+                    workloadCompleted = true;
+                    freeze(State.PAUSED);
+                    workloadCompletedAtNanos = System.nanoTime();
+                }
             }
         }
     }
@@ -241,6 +263,21 @@ public final class Simulation implements AutoCloseable {
         return new Status(state, elapsed / 1_000_000, configuration, attempts, modifications, List.copyOf(playerStates));
     }
     public synchronized Status status() { return snapshot(elapsedNs()); }
+    public synchronized Status startTrial(long count, long seed) {
+        if (closed) throw new IllegalStateException("Simulation is closed");
+        if (count < 1 || count > 1_000_000_000L) throw new IllegalArgumentException("Le nombre d’actions doit être compris entre 1 et 1 000 000 000");
+        if (configuration.stock().enabled()) throw new IllegalStateException("Désactivez le stock pour un essai reproductible à charge fixe");
+        reset();
+        positions = PlacementStrategy.create(configuration, new java.util.Random(seed));
+        targetActions = count;
+        workloadSeed = seed;
+        return start();
+    }
+    public synchronized Performance performance() {
+        return new Performance(targetActions, workloadSeed, workloadCompleted, workloadFailure,
+                performance.snapshot(elapsedNs(), actions, attempts));
+    }
+    public Long trialCompletedAtNanos() { return workloadCompletedAtNanos; }
     public synchronized List<Score> scores() {
         var counts = board.counts();
         return players.stream().map(p -> new Score(p, counts.get(p.color()), counts.get(p.color()) * 100.0 / board.totalCells())).toList();

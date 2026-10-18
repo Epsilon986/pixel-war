@@ -1,5 +1,11 @@
 # Pixel War — V3
 
+## Tableau de bord de performance
+
+L’affichage suit désormais les sept mesures de [docs/list_metriques.md](docs/list_metriques.md) : temps pour N actions, tentatives/s, octets alloués/action, temps CPU, heap maximale observée, attente des verrous et latences HTTP P95/P99.
+
+Le formulaire **Lancer un nouvel essai** réinitialise le plateau, utilise la graine choisie et arrête le moteur à exactement N actions. Le stock doit être désactivé pour que la charge soit reproductible. Les lectures de l’interface continuent pendant l’essai. La portée des mesures, les nouveaux endpoints et la validation sont décrits dans [docs/metriques.md](docs/metriques.md). L’ancien endpoint `/api/metrics` est conservé pour les scripts ; le tableau de bord utilise `/api/performance`.
+
 La V3 ajoute une stratégie de frontière : exploration uniforme avec une probabilité de 10 %, évaluation de dix candidats et score favorisant les voisins alliés et les conversions potentielles. Les frontières sont mises à jour après chaque pose et conversion, sans parcours global. Le verrou, les stocks et les conversions simultanées de la V2 sont conservés. Un pixel de stock est consommé uniquement si la pose change une cellule.
 
 ## Stratégies V3

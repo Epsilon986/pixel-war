@@ -3,9 +3,12 @@ const $ = id => document.getElementById(id);
 const number = value => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(value);
 let busy = false;
 let currentState;
+let completedTrial = false;
+let stockEnabled = true;
 
-async function request(path, method = 'GET') {
-  const response = await fetch('/api/' + path, { method });
+async function request(path, method = 'GET', body) {
+  const response = await fetch('/api/' + path, { method,
+    ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.error || `Erreur HTTP ${response.status}`);
@@ -13,16 +16,21 @@ async function request(path, method = 'GET') {
   return response.json();
 }
 function controls() {
-  const allowed = { start: currentState === 'STOPPED', pause: currentState === 'RUNNING', resume: currentState === 'PAUSED', stop: currentState === 'RUNNING' || currentState === 'PAUSED', reset: !!currentState };
+  const allowed = { start: currentState === 'STOPPED' && !completedTrial, pause: currentState === 'RUNNING', resume: currentState === 'PAUSED' && !completedTrial, stop: currentState === 'RUNNING' || currentState === 'PAUSED', reset: !!currentState };
   document.querySelectorAll('button[data-action]').forEach(button => button.disabled = busy || !allowed[button.dataset.action]);
+  $('trial-start').disabled = busy || !currentState || stockEnabled;
+  $('trial-actions').disabled = busy;
+  $('trial-seed').disabled = busy;
 }
 async function refresh() {
   const [state, scores, metrics, preview] = await Promise.all([
-    request('simulation'), request('simulation/scores'), request('metrics'), request('board/preview')
+    request('simulation'), request('simulation/scores'), request('performance'), request('board/preview')
   ]);
   currentState = state.state;
   $('state').textContent = state.state;
   const config = state.configuration;
+  stockEnabled = config.stock.enabled;
+  completedTrial = metrics.engine.completed;
   const stockDescription = config.stock.enabled
     ? `recharge : ${number(config.stock.refillAmount)} pixels / ${number(config.stock.refillIntervalNs)} ns`
     : 'stock désactivé';
@@ -50,33 +58,54 @@ async function refresh() {
     if (config.stock.enabled) node.append(progress);
     return node;
   }));
-  const rows = {
-    'Temps actif': `${number(metrics.simulation.elapsedMs / 1000)} s`,
-    'Actions / s': number(metrics.actionsPerSecond), 'Actions sans stock': number(metrics.actionsWithoutStock),
-    'Pixels moyens / action': number(metrics.averagePixelsPerAction),
-    'Tentatives / modifications directes': `${number(metrics.simulation.attempts)} / ${number(metrics.simulation.modifications)}`,
-    'Tentatives / s': number(metrics.attemptsPerSecond), 'Modifications directes / s': number(metrics.modificationsPerSecond),
-    'Pixels consommés / rechargés': `${number(metrics.pixelsConsumed)} / ${number(metrics.pixelsRefilled)}`,
-    'Crédits perdus à capacité': number(metrics.pixelsDiscardedAtCapacity),
-    'Passes / conversions': `${number(metrics.conversionPasses)} / ${number(metrics.conversions)}`,
-    'Conversions / s': number(metrics.conversionsPerSecond), 'Changements totaux / s': number(metrics.boardChangesPerSecond),
-    'Passe moyenne / min / max': `${[metrics.conversionDurationNanos.averageNanos, metrics.conversionDurationNanos.minimumNanos, metrics.conversionDurationNanos.maximumNanos].map(n => number(n / 1e6)).join(' / ')} ms`,
-    'Action moyenne / min / max': `${[metrics.latency.averageNanos, metrics.latency.minimumNanos, metrics.latency.maximumNanos].map(n => number(n / 1e6)).join(' / ')} ms`,
-    'Heap utilisée / maximale': `${number(metrics.jvm.heapUsedBytes / 1048576)} / ${number(metrics.jvm.heapMaxBytes / 1048576)} Mio`,
-    'Threads / processeurs': `${metrics.jvm.activeThreads} / ${metrics.jvm.availableProcessors}`,
-    'CPU processus': metrics.jvm.processCpuLoad === null ? 'Indisponible' : `${number(metrics.jvm.processCpuLoad * 100)} %`,
-    'Cellules vides': number(metrics.cellsByColor.EMPTY),
-    'Frontières rouge / bleu / vert / jaune': ['RED', 'BLUE', 'GREEN', 'YELLOW'].map(color => number(metrics.frontiers.sizes[color])).join(' / '),
-    'Maintenance des frontières moyenne': `${number(metrics.frontiers.averageNanos / 1e3)} µs / changement`,
-    'Stockage des frontières estimé': `${number(metrics.frontiers.storageBytes / 1048576)} Mio`
-  };
-  metrics.players.forEach(p => rows[`${p.player.name} : actions / sans stock / conversions reçues`] = `${number(p.actions)} / ${number(p.actionsWithoutStock)} / ${number(p.conversionsReceived)}`);
-  $('metrics').replaceChildren(...Object.entries(rows).flatMap(([label, value]) => {
-    const term = document.createElement('dt'); term.textContent = label;
-    const definition = document.createElement('dd'); definition.textContent = value;
-    return [term, definition];
+  renderPerformance(metrics, state);
+}
+function duration(nanos) {
+  if (nanos === null || nanos === undefined) return 'Indisponible';
+  return nanos < 1e6 ? `${number(nanos / 1e3)} µs` : nanos < 1e9 ? `${number(nanos / 1e6)} ms` : `${number(nanos / 1e9)} s`;
+}
+function waitDuration(nanos) { return nanos === null || nanos === undefined ? 'Indisponible' : `${number(nanos / 1e6)} ms`; }
+function percentiles(group) {
+  return group.samples === 0 ? (completedTrial ? 'Aucune requête pendant l’essai' : 'En attente de requêtes') : `${duration(group.p95Nanos)} / ${duration(group.p99Nanos)} · ${number(group.samples)} req.`;
+}
+function renderPerformance(data, state) {
+  const engine = data.engine, measures = engine.measurements, fixed = engine.targetActions !== null;
+  $('trial-state').textContent = engine.failure ? `Échec : ${engine.failure}` : fixed
+    ? `${engine.completed ? 'Terminé' : state.state === 'RUNNING' ? 'En cours' : 'Interrompu'} · ${number(measures.actions)} / ${number(engine.targetActions)} actions · graine ${engine.seed}`
+    : `Simulation libre · ${number(measures.actions)} actions`;
+  $('trial-progress').hidden = !fixed;
+  $('trial-progress').max = engine.targetActions || 1;
+  $('trial-progress').value = measures.actions;
+  $('trial-help').textContent = stockEnabled
+    ? 'Le stock doit être désactivé au démarrage pour comparer une charge reproductible. Les mesures de simulation libre restent disponibles.'
+    : 'Un nouvel essai efface le plateau et les mesures, utilise la graine indiquée et se met en pause après exactement N actions. Le polling reste actif.';
+  const rows = [
+    [fixed ? 'Temps pour N actions' : 'Temps actif mesuré', duration(measures.elapsedNanos), fixed ? `${number(measures.actions)} / ${number(engine.targetActions)} actions${engine.completed ? ' · charge terminée' : ' · mesure partielle'}` : 'Lancer un essai pour définir une charge fixe'],
+    ['Tentatives / s', number(measures.attemptsPerSecond), `${number(measures.attempts)} tentatives depuis le début de la mesure`],
+    ['Octets alloués / action', measures.allocatedBytesPerAction === null ? 'Indisponible' : `${number(measures.allocatedBytesPerAction)} o`, 'Allocations du thread moteur, hors requêtes HTTP'],
+    ['Temps CPU de la charge', duration(measures.cpuNanos), 'Thread moteur · sommeil et attente exclus'],
+    ['Heap maximale observée', `${number(measures.peakObservedHeapBytes / 1048576)} Mio`, 'Heap utilisée par toute la JVM · maximum échantillonné'],
+    ['Attente des verrous', waitDuration(measures.engineBlockedNanos), `Moteur · requêtes achevées : ${waitDuration(data.http.completedRequestsBlockedNanos)}`],
+    ['Latence HTTP P95 / P99', `Lectures : ${percentiles(data.http.reads)}`, `Commandes : ${percentiles(data.http.commands)}`]
+  ];
+  $('metrics').replaceChildren(...rows.map(([label, value, detail]) => {
+    const card = document.createElement('article'); card.className = 'metric-card';
+    const title = document.createElement('h3'); title.textContent = label;
+    const result = document.createElement('strong'); result.textContent = value;
+    const note = document.createElement('p'); note.textContent = detail;
+    card.append(title, result, note); return card;
   }));
 }
+$('trial-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (busy || stockEnabled || !$('trial-form').reportValidity()) return;
+  const actions = Number($('trial-actions').value), seed = Number($('trial-seed').value);
+  if (!Number.isSafeInteger(actions) || !Number.isSafeInteger(seed)) return;
+  busy = true; controls();
+  try { await request('simulation/trial', 'POST', { actions, seed }); await refresh(); $('error').textContent = ''; }
+  catch (error) { $('error').textContent = error.message; }
+  finally { busy = false; controls(); }
+});
 document.querySelectorAll('button[data-action]').forEach(button => button.addEventListener('click', async () => {
   busy = true; controls();
   try { await request('simulation/' + button.dataset.action, 'POST'); await refresh(); $('error').textContent = ''; }
