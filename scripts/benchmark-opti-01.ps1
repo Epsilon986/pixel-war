@@ -27,6 +27,15 @@ $ErrorActionPreference = 'Continue' # java -version intentionally writes its ver
 & $javaPath -version 2> (Join-Path $results 'java-version.txt')
 $ErrorActionPreference = $savedErrorPreference
 $versions = @{}
+function Invoke-LoggedNative([string]$File,[string[]]$Arguments,[string]$Log) {
+    $saved = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        & $File @Arguments > $Log 2>&1
+        $exitCode = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $saved }
+    if ($exitCode -ne 0) { throw "Native command failed ($exitCode): $File. See $Log" }
+}
 
 function Prepare-Version([string]$Label, [string]$Reference) {
     if (!$Reference) { return }
@@ -45,13 +54,11 @@ function Prepare-Version([string]$Label, [string]$Reference) {
             if ($LASTEXITCODE -ne 0) { throw 'Source extraction failed.' }
             Push-Location -LiteralPath $source
             try {
-                & ./mvnw.cmd -B -ntp verify dependency:build-classpath '-Dmdep.outputFile=target/experiment-classpath.txt' > (Join-Path $results "logs/build-$Label.log") 2>&1
-                if ($LASTEXITCODE -ne 0) { throw "Build failed: $Label. See logs/build-$Label.log" }
+                Invoke-LoggedNative './mvnw.cmd' @('-B','-ntp','verify','dependency:build-classpath','-Dmdep.outputFile=target/experiment-classpath.txt') (Join-Path $results "logs/build-$Label.log")
                 $cp = 'target/classes;' + (Get-Content target/experiment-classpath.txt -Raw).Trim()
                 New-Item -ItemType Directory -Force -Path target/experiment-classes | Out-Null
                 $javaFiles = @(Get-ChildItem -LiteralPath scripts/opti01 -Filter '*.java' | ForEach-Object FullName)
-                & (Join-Path $jdkBin 'javac.exe') --release 21 --class-path $cp -d target/experiment-classes $javaFiles > (Join-Path $results "logs/harness-$Label.log") 2>&1
-                if ($LASTEXITCODE -ne 0) { throw "Harness compilation failed: $Label" }
+                Invoke-LoggedNative (Join-Path $jdkBin 'javac.exe') (@('--release','21','--class-path',$cp,'-d','target/experiment-classes') + $javaFiles) (Join-Path $results "logs/harness-$Label.log")
                 @('Premain-Class: org.pixelwar.pixelwar.domain.StorageAgent','') | Set-Content -LiteralPath target/experiment-manifest.mf -Encoding Ascii
                 & (Join-Path $jdkBin 'jar.exe') --create --file target/storage-agent.jar --manifest target/experiment-manifest.mf -C target/experiment-classes .
                 if ($LASTEXITCODE -ne 0) { throw 'Agent packaging failed.' }
