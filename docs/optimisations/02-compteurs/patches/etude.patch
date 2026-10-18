@@ -1,0 +1,1183 @@
+diff --git a/instructions/mission-opti-02.md b/instructions/mission-opti-02.md
+new file mode 100644
+index 0000000..b69b6d9
+--- /dev/null
++++ b/instructions/mission-opti-02.md
+@@ -0,0 +1,155 @@
++# Pixel War — Mission Codex : optimisation 02, coût des compteurs
++
++## Mission et décision d’ingénierie
++
++Évaluer puis réduire le coût de synchronisation des compteurs techniques du moteur, **sans changer le verrou global ni les règles V3**. La piste retenue est de remplacer des atomiques redondants par des compteurs primitifs ordinaires lorsque tous les accès sont déjà protégés par le même verrou, ou lorsque leur confinement est effectivement démontré.
++
++Ce n’est pas une instruction de remplacer tous les compteurs par `AtomicLong` ou `LongAdder`. L’objectif est de choisir la synchronisation minimale correcte, puis de mesurer son intérêt réel. Si les compteurs sont déjà des primitifs correctement protégés, documenter ce constat et ne pas inventer une optimisation.
++
++Livrer un rapport d’audit d’étape autonome, ses mesures et ses preuves, utilisables ultérieurement pour rédiger l’audit final. Le code seul et un résumé de chat ne suffisent pas.
++
++## 1. Point de départ et périmètre
++
++Lire le dépôt, les règles V3 actuelles, le rapport et les résultats de l’optimisation 01. Vérifier si le board compact a été conservé, rejeté ou n’a pas été implémenté. Partir du dernier état fonctionnel effectivement retenu, sur une branche dédiée ; conserver les modifications locales et la référence V3 historique.
++
++Le présent descriptif a été préparé sans résultats de l’étape 01 ni inspection du code actuel. Il ne prouve pas que les compteurs sont un goulot ni même qu’ils utilisent des atomiques.
++
++Conserver : stratégie, graines et ordre des tirages, bonus, stock consommé seulement sur changement effectif, éliminations, frontières, scores, conversion incrémentale simultanée, scheduler, API et cycle de vie. Ne pas reprendre les anciennes règles de stock de la V2.
++
++Hors périmètre : suppression ou partition du verrou global, parallélisation des joueurs, snapshots HTTP, nouvelle représentation du board, modification des frontières, agrégation différée des événements, refonte de l’interface et ajout de métriques permanentes.
++
++## 2. Diagnostic obligatoire avant modification
++
++Exécuter les tests et une baseline actuelle SMALL 500 × 500 et DEFAULT 4000 × 4000. Capturer un profil CPU et allocations, et les attentes de synchronisation disponibles, sur DEFAULT. Réutiliser le banc de mesure de l’étape 01 en conservant ses définitions et en documentant les adaptations nécessaires.
++
++Inventorier les compteurs globaux et par joueur : actions, tentatives, modifications, conversions, stock consommé/rechargé, actions sans stock et statistiques de durée. Distinguer les scores métier des statistiques techniques. Inspecter aussi les compteurs présents dans Board ou dans la maintenance des frontières, sans les modifier automatiquement.
++
++Écrire dans le rapport une table :
++
++| Compteur ou groupe | Type actuel | Écrivains et lecteurs | Protection réelle | Exactitude requise | Décision motivée |
++|---|---|---|---|---|---|
++| À relever dans le code | `long`, atomique, adder, etc. | Moteur, HTTP, reset, tâche de collecte… | Moniteur précis, verrou, confinement ou aucune | Individuelle et/ou ensemble cohérent | Conserver ou simplifier |
++
++Vérifier chaque chemin : incrément, lecture API, copie/export, getter, reset, arrêt, erreur et tâche asynchrone. Le fait que les écritures soient protégées ne suffit pas si une lecture ne l’est pas. Un moniteur `Board` et un moniteur `Simulation` ne sont pas automatiquement équivalents.
++
++Décrire la fréquence des mises à jour et leur position dans les piles chaudes. L’absence de méthode atomique visible dans un profil échantillonné n’est pas la preuve d’un coût nul : l’inlining et la précision du profil limitent cette observation.
++
++## 3. Règles de choix et implémentation
++
++| Situation démontrée | Choix pour cette mission |
++|---|---|
++| Tous les accès au compteur sont sous le même verrou | Un `long` ordinaire peut remplacer l’atomique redondant |
++| Confinement à un thread, publication et remise à zéro également sûres | Primitif possible après démonstration complète du cycle de vie |
++| Accès concurrent hors du verrou, exactitude individuelle requise | Conserver l’atomique existant ; ne pas retirer sa protection |
++| Plusieurs valeurs doivent être lues comme un ensemble cohérent | Conserver leur protocole de verrouillage commun ; plusieurs `AtomicLong` ne suffisent pas |
++| Forte contention entre écrivains indépendants, somme approximative acceptable | `LongAdder` est un candidat pour une autre architecture ; cette situation n’est pas présumée ici |
++
++Dans le code de production, limiter le changement aux compteurs dont la protection a été démontrée. Utiliser `long`, jamais `int`, pour conserver les capacités actuelles et les mêmes règles de dépassement éventuelles. Ne pas ajouter un `volatile` à la place d’un incrément atomique : `volatile` ne rend pas `++` atomique.
++
++Préserver les mises à jour aux mêmes endroits et avec la même attribution. Ne pas déplacer tous les compteurs en fin d’action, car une erreur partielle pourrait changer leur sémantique. Ne pas utiliser `LongAdder.sumThenReset()` pour réaliser un reset concurrent exact. Conserver la cohérence des statistiques composées : total, nombre, minimum, maximum et moyenne.
++
++Ne pas remplacer des calculs de durée ou leurs horloges dans la même expérience. Conserver noms, unités, JSON et comportement avant toute action ou passe.
++
++### Si aucun atomique redondant n’existe
++
++Ne pas fabriquer une refonte en ajoutant puis retirant des atomiques dans la baseline. Livrer l’inventaire, les profils et une conclusion « piste non applicable dans cette architecture ». Le rapport peut constituer une étude de choix, mais ne doit pas annoncer un gain de production ni une régression réelle qui n’a pas été observée.
++
++Un microbenchmark comparant compteur sous verrou, `AtomicLong` et `LongAdder` est facultatif, dans le banc de mesure uniquement. Employer JMH, consommer les résultats, conserver la même opération logique et distinguer un écrivain, plusieurs écrivains et lecteur concurrent. Ne pas extrapoler le cas multithread à un moteur sérialisé. Ne pas compter ce microbenchmark comme une optimisation livrée.
++
++## 4. Validation de l’exactitude
++
++Conserver les tests métier et ajouter des tests ciblés pour les compteurs modifiés :
++
++- égalité des totaux avant/après sur le même rejeu déterministe ;
++- cohérence globale/par joueur, y compris conversions attribuées à la couleur bénéficiaire ;
++- action sans stock, pose sans changement, conversions différées et statistiques sans observation ;
++- consommation conditionnelle du stock selon les règles V3 ;
++- lectures concurrentes pendant les actions, pause, stop et reset ;
++- exclusion des mutations tardives après le retour des commandes ;
++- remise à zéro et absence d’ancien compteur visible dans les lectures réalisées après reset.
++
++Utiliser des barrières/latches ou un pilotage déterministe pour les scénarios de concurrence ; éviter les tests reposant seulement sur des attentes arbitraires. Vérifier les invariants valables pour un même état capturé sous verrou. Ne pas exiger l’égalité de réponses issues de requêtes différentes exécutées à des instants différents.
++
++Comparer aussi l’état spatial et celui des joueurs avant/après, pas seulement les compteurs. Les durées et mesures JVM sont exclues de cette égalité.
++
++## 5. Mesures avant/après
++
++Identifier deux références : état retenu après étape 01 avec banc commun, puis même état avec la seule modification des compteurs. Même JVM exacte, flags, heap, configuration et instrumentation. Enregistrer environnement matériel et logiciel complet, y compris caches accessibles et gestion du bruit.
++
++| Scénario | Objectif |
++|---|---|
++| Moteur déterministe, sans HTTP | Isoler le coût d’exécution à charge fixe |
++| Application réelle, sans polling | Vérifier le coût avec le scheduler |
++| Application réelle, polling contrôlé | Mesurer l’effet des lectures concurrentes |
++
++Tester SMALL et DEFAULT, avec états initiaux vide et rempli déterministes pour le moteur. Pour l’application, reprendre les scénarios et endpoints de l’étape 01. Conserver la même fréquence et concurrence HTTP, sans réduire les données retournées.
++
++Pour le moteur : chauffe JVM puis recréation du même état et des générateurs ; charge fixe calibrée sur la baseline et figée avant/après ; au moins cinq paires dans des JVM neuves par scénario principal, avec ordre avant/après alterné. Une graine peut être retenue pour les mesures principales, les graines 11/22/33 restant requises pour le rejeu fonctionnel. Calculer les statistiques par graine si plusieurs sont mesurées.
++
++Pour l’application : chauffe documentée, fenêtres d’au moins 20 secondes, trois paires par taille et condition de polling. Comptabiliser travail réel, erreurs et éliminations ; ne pas gonfler le débit par des appels devenus sans effet. Utiliser les deltas de compteurs et de temps actif pour le moteur, et préciser la base temporelle des mesures HTTP et CPU.
++
++| Mesure | Exigence |
++|---|---|
++| Temps de charge fixe et tentatives/s | Principaux indicateurs de gain moteur |
++| Modifications/s et actions exécutées | Vérifier une charge métier comparable |
++| Temps CPU consommé | Préciser thread ou processus et fenêtre |
++| Latences HTTP P50/P95/P99, erreurs et requêtes | Décrire la charge réellement obtenue |
++| Allocations/action et mémoire | Mesurer si pertinent ; une absence de gain mémoire est recevable |
++| Attentes de moniteurs | Profils réels, seuils et limites ; pas d’estimation inventée |
++
++Capturer JFR avant/après dans des essais séparés des mesures principales de débit. Montrer les vues CPU, allocations et contention réellement disponibles. Des atomiques utilisent des mécanismes différents des moniteurs ; une baisse d’événements de moniteur ne prouve pas une baisse de leur coût.
++
++Produire moyenne, médiane, écart-type, variance et nombre d’essais pour temps et débit, avec unités et convention de variance. Ne pas mélanger tailles, graines et niveaux de polling en une seule moyenne. Conserver les valeurs brutes avant arrondi.
++
++## 6. Rapport obligatoire et pièces à remettre
++
++Écrire `docs/optimisations/02-compteurs.md` en français. Il doit se suffire à lui-même pour une future rédaction de l’audit, sans accès à la conversation :
++
++1. Résumé du besoin, état de départ réel, hypothèse, résultats et décision.
++2. Matériel, JVM, versions, commits, flags, configurations, chauffe, répétitions et commandes exactes.
++3. Inventaire des compteurs, protection de chaque accès et diagnostic appuyé sur les profils.
++4. Implémentation, fichiers modifiés, synchronisation conservée et preuve de correction.
++5. Tests et rejeu : commandes, résultats réels et éventuels échecs.
++6. Tableau avant/après par scénario : valeurs, variations, dispersion, unités et liens vers données sources.
++7. Profils CPU/allocations/attentes avant/après, vues annotées et graphiques issus des données, avec scripts de génération.
++8. Analyse : gain marginal après étape 01, effets sous polling et sans polling, coûts et limites ; prochain goulot sans nouvelle refonte.
++9. Conclusion : conserver, rejeter ou piste non applicable. Un gain inférieur au bruit doit être déclaré non établi.
++
++Calculer séparément accélération temporelle `temps avant / temps après`, variation du débit `100 × (après / avant − 1)` et réduction du temps `100 × (1 − après / avant)`. Le gain cumulé depuis V3 ne peut être annoncé que sur des mesures comparables ; sinon indiquer qu’il reste à mesurer. Ne pas additionner des pourcentages de gains successifs.
++
++### Correspondance avec le barème
++
++Ajouter une matrice avec statut, section et pièce justificative pour chaque critère :
++
++| Critère | Points | Contribution de cette étape |
++|---|---:|---|
++| Environnement et métrologie | 3 | Environnement, protocole et statistiques reproductibles |
++| Diagnostic et profiling réel | 5 | Captures réelles annotées et interprétation du coût des compteurs |
++| Journal d’optimisation | 5 | Choix de synchronisation et exactitude ; ne vaut pas preuve de scalabilité parallèle |
++| Échec constructif | 3 | Seulement si une tentative réelle mesurée régresse ou échoue ; sinon critère restant |
++| Reproductibilité et synthèse | 4 | Script unique, données, calculs, références et figures |
++| Gouvernance IA | +2 | Vérifier le fichier existant et ses quatre directives ; ne pas présumer le bonus acquis |
++
++Statuts : couvert, partiel, non traité ou non applicable justifié. L’axe réseau/persistance et le parallélisme restent à traiter si requis ; cette étape ne valide pas tout le barème. Expliquer les équivalents Java aux outils Go et les différences avec Hyperfine ; leur acceptation finale relève de l’évaluateur.
++
++Ne jamais fabriquer une régression pour obtenir les points d’échec constructif. Si la simplification ne change rien ou régresse, conserver les données et l’analyse, puis justifier la décision sans poursuivre une autre optimisation.
++
++### Archive autonome
++
++Fournir `target/audit-opti-02.zip` contenant rapport, index des pièces, CSV/JSON individuels, dictionnaire des métriques, profils réels, vues annotées, figures, scripts, journaux de tests, configuration, références de code et manifeste SHA-256. Inclure un patch si nécessaire pour rendre les modifications identifiables ; indiquer le dépôt requis pour reproduire le code. Exclure secrets et dossier `.git` complet.
++
++Le script `scripts/benchmark-opti-02.ps1` doit lancer compilation, essais et génération de synthèse en une commande documentée, en réutilisant le banc existant. Chaque essai porte un identifiant et conserve commit, hash du binaire, graine, paramètres, état initial, ordre, instrumentation, durée, compteurs et erreurs. Vérifier les liens après extraction de l’archive.
++
++Si une mesure, un profil ou DEFAULT manque, l’indiquer explicitement ; ne pas fournir une valeur théorique comme résultat observé. Conserver les problèmes de mémoire ou d’exécution et les commandes nécessaires. Le rapport est alors partiel.
++
++## 7. Critères de fin
++
++- [ ] État de l’étape 01 vérifié et références exactes enregistrées.
++- [ ] Protection de chaque compteur modifié démontrée sur tous ses accès.
++- [ ] Une seule optimisation, aucun retrait du verrou global.
++- [ ] Tests et rejeu métier réussis ou échecs explicitement documentés.
++- [ ] Mesures SMALL/DEFAULT, sans polling et avec polling, ou manques signalés.
++- [ ] Rapport autonome, matrice du barème et archive de preuves vérifiée.
++- [ ] Conclusion honnête : gain mesuré, gain non établi, régression ou non-applicabilité.
++
++Références : supports J3_AM (verrous et atomiques), J3_PM (métriques concurrentes), J2_PM (métrologie), barème et rapport d’audit d’exemple fournis. Références Java : [AtomicLong](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/atomic/AtomicLong.html), [LongAdder](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/atomic/LongAdder.html), [modèle mémoire Java](https://docs.oracle.com/javase/specs/jls/se21/html/jls-17.html).
+diff --git a/scripts/benchmark-opti-02.ps1 b/scripts/benchmark-opti-02.ps1
+new file mode 100644
+index 0000000..7adf823
+--- /dev/null
++++ b/scripts/benchmark-opti-02.ps1
+@@ -0,0 +1,226 @@
++﻿param(
++    [Parameter(Mandatory=$true)][string]$Reference,
++    [string]$Java = 'java',
++    [string]$Python = 'python',
++    [string]$ResultsDir = 'target/opti-02-results',
++    [ValidateSet('All','Prepare','Calibrate','Application','Profiles')][string]$Phase = 'All',
++    [int]$EngineRepetitions = 5,
++    [int]$ApplicationRepetitions = 3,
++    [int]$ApplicationSeconds = 20,
++    [int]$ApplicationWarmupSeconds = 5,
++    [switch]$Resume
++)
++$ErrorActionPreference = 'Stop'
++if ($EngineRepetitions -lt 5 -or $ApplicationRepetitions -lt 3 -or $ApplicationSeconds -lt 20) { throw 'Minimum: 5 engine repetitions, 3 application repetitions, 20 second windows.' }
++$repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
++$results = if ([IO.Path]::IsPathRooted($ResultsDir)) { [IO.Path]::GetFullPath($ResultsDir) } else { [IO.Path]::GetFullPath((Join-Path $repo $ResultsDir)) }
++$javaPath = (Get-Command $Java -ErrorAction Stop).Source
++$jdkBin = Split-Path -Parent $javaPath
++$env:JAVA_HOME = Split-Path -Parent $jdkBin
++$flags = @('-Xms2g','-Xmx2g','-XX:+UseG1GC')
++foreach ($dir in @('raw','logs','profiles','builds')) { New-Item -ItemType Directory -Force -Path (Join-Path $results $dir) | Out-Null }
++$environment = [ordered]@{StartedUtc=[DateTime]::UtcNow.ToString('o'); Reference=$Reference; Study='baseline only: no redundant production atomics'; Java=$javaPath; Flags=$flags; EngineRepetitions=$EngineRepetitions; ApplicationRepetitions=$ApplicationRepetitions; ApplicationSeconds=$ApplicationSeconds; ApplicationWarmupSeconds=$ApplicationWarmupSeconds; EngineWarmupSeconds=3; HeapSamplePeriodMs=10; PerformanceSeed=11; ReplaySeeds=@(11,22,33); PollEndpoints=@('/api/simulation','/api/simulation/scores','/api/performance','/api/board/preview'); PollPeriodMs=1000; PreviewWidth=500; PreviewHeight=500; Cpu=(Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores,NumberOfLogicalProcessors,L2CacheSize,L3CacheSize); Computer=(Get-CimInstance Win32_ComputerSystem | Select-Object TotalPhysicalMemory); Os=(Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,OSArchitecture)}
++$environment | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $results 'environment.json')
++$environment | ConvertTo-Json -Depth 8 -Compress | Add-Content -Encoding UTF8 -LiteralPath (Join-Path $results 'invocations.jsonl')
++$PSVersionTable | Out-String | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $results 'powershell-version.txt')
++$savedErrorPreference = $ErrorActionPreference
++$ErrorActionPreference = 'Continue' # java -version intentionally writes its version to stderr on Windows PowerShell.
++& $javaPath -version 2> (Join-Path $results 'java-version.txt')
++$ErrorActionPreference = $savedErrorPreference
++$versions = @{}
++function Invoke-LoggedNative([string]$File,[string[]]$Arguments,[string]$Log) {
++    $saved = $ErrorActionPreference
++    try {
++        $ErrorActionPreference = 'Continue'
++        & $File @Arguments > $Log 2>&1
++        $exitCode = $LASTEXITCODE
++    } finally { $ErrorActionPreference = $saved }
++    if ($exitCode -ne 0) { throw "Native command failed ($exitCode): $File. See $Log" }
++}
++
++function Prepare-Version([string]$Label, [string]$Reference) {
++    if (!$Reference) { return }
++    Push-Location -LiteralPath $repo
++    try {
++        $commit = (git rev-parse $Reference).Trim()
++        if ($LASTEXITCODE -ne 0) { throw "Invalid reference: $Reference" }
++        $folder = Join-Path $results "builds/$Label"
++        $source = Join-Path $folder 'source'
++        New-Item -ItemType Directory -Force -Path $source | Out-Null
++        $metadataPath = Join-Path $folder 'build.json'
++        if (!($Resume -and (Test-Path -LiteralPath $metadataPath) -and ((Get-Content $metadataPath -Raw | ConvertFrom-Json).commit -eq $commit))) {
++            git archive --format=tar -o (Join-Path $folder 'source.tar') $commit
++            if ($LASTEXITCODE -ne 0) { throw 'git archive failed.' }
++            & tar -xf (Join-Path $folder 'source.tar') -C $source
++            if ($LASTEXITCODE -ne 0) { throw 'Source extraction failed.' }
++            Push-Location -LiteralPath $source
++            try {
++                Invoke-LoggedNative './mvnw.cmd' @('--version') (Join-Path $results 'maven-version.txt')
++                Invoke-LoggedNative './mvnw.cmd' @('-B','-ntp','verify','dependency:build-classpath','-Dmdep.outputFile=target/experiment-classpath.txt') (Join-Path $results "logs/build-$Label.log")
++                $cp = 'target/classes;' + (Get-Content target/experiment-classpath.txt -Raw).Trim()
++                New-Item -ItemType Directory -Force -Path target/experiment-classes | Out-Null
++                $javaFiles = @(Get-ChildItem -LiteralPath scripts/opti02 -Filter '*.java' | ForEach-Object FullName)
++                Invoke-LoggedNative (Join-Path $jdkBin 'javac.exe') (@('--release','21','--class-path',$cp,'-d','target/experiment-classes') + $javaFiles) (Join-Path $results "logs/harness-$Label.log")
++                @('Premain-Class: org.pixelwar.pixelwar.domain.StorageAgent','') | Set-Content -LiteralPath target/experiment-manifest.mf -Encoding Ascii
++                & (Join-Path $jdkBin 'jar.exe') --create --file target/storage-agent.jar --manifest target/experiment-manifest.mf -C target/experiment-classes .
++                if ($LASTEXITCODE -ne 0) { throw 'Agent packaging failed.' }
++                [ordered]@{commit=$commit; jarSha256=(Get-FileHash target/pixel-war-0.0.1-SNAPSHOT.jar -Algorithm SHA256).Hash; harnessSha256=(Get-FileHash target/storage-agent.jar -Algorithm SHA256).Hash; sourceStatus='clean git archive'} | ConvertTo-Json | Set-Content -Encoding UTF8 -LiteralPath $metadataPath
++            } finally { Pop-Location }
++        }
++        $dependencyCp = (Get-Content (Join-Path $source 'target/experiment-classpath.txt') -Raw).Trim()
++        $versions[$Label] = @{source=$source; commit=$commit; meta=(Get-Content $metadataPath -Raw | ConvertFrom-Json); cp=((Join-Path $source 'target/experiment-classes') + ';' + (Join-Path $source 'target/classes') + ';' + $dependencyCp); agent=(Join-Path $source 'target/storage-agent.jar')}
++    } finally { Pop-Location }
++}
++function Stamp-Result([string]$Path, [string]$Label, [string]$RunId, [int]$Order) {
++    $data = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
++    $data | Add-Member -NotePropertyName version -NotePropertyValue $Label -Force
++    $data | Add-Member -NotePropertyName commit -NotePropertyValue $versions[$Label].commit -Force
++    $data | Add-Member -NotePropertyName runId -NotePropertyValue $RunId -Force
++    $data | Add-Member -NotePropertyName pairOrder -NotePropertyValue $Order -Force
++    $data | Add-Member -NotePropertyName binarySha256 -NotePropertyValue $versions[$Label].meta.jarSha256 -Force
++    $data | Add-Member -NotePropertyName harnessSha256 -NotePropertyValue $versions[$Label].meta.harnessSha256 -Force
++    $data | Add-Member -NotePropertyName configuration -NotePropertyValue ([ordered]@{width=$data.size; height=$data.size; intervalNs=10; maxPixelsPerAction=10; strategy='frontier'; explorationProbability=0.1; frontierSampleSize=10; weakOpponentBonus=8; targetHoldActions=20; stockEnabled=$false; conversionEnabled=$true; previewWidth=500; previewHeight=500}) -Force
++    $data | Add-Member -NotePropertyName completedUtc -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force
++    $data | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $Path -Encoding UTF8
++}
++function Run-Engine([string]$Label,[int]$Size,[string]$Initial,[long]$Seed,[long]$Budget,[string]$Mode,[int]$Pair,[int]$Order,[double]$Warmup=3) {
++    $id = "$Mode-$Size-$Initial-s$Seed-p$Pair-$Label"
++    $output = Join-Path $results "raw/$id.json"
++    if ($Resume -and (Test-Path -LiteralPath $output)) {
++        if ((Get-Content $output -Raw | ConvertFrom-Json).commit -ne $versions[$Label].commit) { throw "Stale result: $output" }
++        return
++    }
++    Write-Host "[$([DateTime]::Now.ToString('HH:mm:ss'))] $id : $Budget actions"
++    $profile = if ($Mode -eq 'profile') { Join-Path $results "profiles/$id.jfr" } else { 'none' }
++    $v = $versions[$Label]
++    $arguments = $flags + @(('-javaagent:' + $v.agent),'--class-path',$v.cp,'org.pixelwar.pixelwar.domain.CounterExperiment',$Mode,"$Size",$Initial,"$Seed","$Budget",$Warmup.ToString([Globalization.CultureInfo]::InvariantCulture),$output,$profile)
++    $savedErrorPreference = $ErrorActionPreference
++    $ErrorActionPreference = 'Continue'
++    & $javaPath @arguments > (Join-Path $results "logs/$id.log") 2>&1
++    $nativeExit = $LASTEXITCODE
++    $ErrorActionPreference = $savedErrorPreference
++    if ($nativeExit -ne 0) { throw "Engine trial failed: $id (failure preserved in logs)." }
++    Stamp-Result $output $Label $id $Order
++}
++
++Add-Type -AssemblyName System.Net.Http
++if (!('Opti02Poller' -as [type])) {
++    Add-Type -ReferencedAssemblies ([System.Net.Http.HttpClient].Assembly.Location) -TypeDefinition @'
++using System;
++using System.Diagnostics;
++using System.Net.Http;
++using System.Threading.Tasks;
++public class Opti02PollResult { public string Path; public int Status; public double ElapsedNanos; public string Error; }
++public static class Opti02Poller {
++ public static async Task<Opti02PollResult> Read(HttpClient client, string root, string path) {
++  var watch = Stopwatch.StartNew(); var result = new Opti02PollResult { Path = path };
++  try { using (var response = await client.GetAsync(root + path)) { await response.Content.ReadAsStringAsync(); result.Status = (int)response.StatusCode; } }
++  catch (Exception exception) { result.Error = exception.GetType().Name + ": " + exception.Message; }
++  result.ElapsedNanos = watch.ElapsedTicks * 1e9 / Stopwatch.Frequency; return result;
++ }
++}
++'@
++}
++function Run-Application([string]$Label,[int]$Size,[int]$Pair,[int]$Order,[bool]$Profile=$false,[bool]$Polling=$true) {
++    $condition = if ($Polling) { "polling" } else { "no-polling" }
++    $id = if ($Profile) { "application-profile-$Size-empty-$condition-s11-p$Pair-$Label" } else { "application-$Size-empty-$condition-s11-p$Pair-$Label" }
++    $output = Join-Path $results "raw/$id.json"
++    if ($Resume -and (Test-Path -LiteralPath $output)) {
++        if ((Get-Content $output -Raw | ConvertFrom-Json).commit -ne $versions[$Label].commit) { throw "Stale result: $output" }
++        return
++    }
++    $probe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0)
++    try { $probe.Start(); $port = ([Net.IPEndPoint]$probe.LocalEndpoint).Port } finally { $probe.Stop() }
++    Write-Host "[$([DateTime]::Now.ToString('HH:mm:ss'))] $id : $ApplicationSeconds seconds, $condition"
++    $v = $versions[$Label]; $root = "http://127.0.0.1:$port"
++    $profilePath = if ($Profile) { Join-Path $results "profiles/$id.jfr" } else { 'none' }
++    $argValues = $flags + @(('-javaagent:' + $v.agent),'--class-path',$v.cp,'org.pixelwar.pixelwar.domain.CounterExperiment','server',"$Size",'empty','11',"$port",'0',$output,$profilePath)
++    $quoted = @($argValues | ForEach-Object { '"' + $_ + '"' })
++    $process = Start-Process -FilePath $javaPath -ArgumentList $quoted -WindowStyle Hidden -PassThru -WorkingDirectory $v.source -RedirectStandardOutput (Join-Path $results "logs/$id.log") -RedirectStandardError (Join-Path $results "logs/$id-error.log")
++    [Net.ServicePointManager]::DefaultConnectionLimit = 32
++    $client = [Net.Http.HttpClient]::new(); $client.Timeout = [TimeSpan]::FromSeconds(30)
++    try {
++        $ready=$false
++        for ($i=0;$i -lt 120;$i++) {
++            if ($process.HasExited) { throw "Server exited: $id" }
++            try { Invoke-RestMethod "$root/health" -TimeoutSec 1 | Out-Null; $ready=$true; break } catch { Start-Sleep -Milliseconds 250 }
++        }
++        if (!$ready) { throw "Server startup timed out: $id" }
++        Invoke-RestMethod "$root/api/simulation/start" -Method Post | Out-Null
++        Start-Sleep -Seconds $ApplicationWarmupSeconds
++        Invoke-RestMethod "$root/api/simulation/pause" -Method Post | Out-Null
++        $before = Invoke-RestMethod "$root/experiment/begin" -Method Post
++        $requests = [Collections.Generic.List[object]]::new()
++        $watch = [Diagnostics.Stopwatch]::StartNew(); $nextPoll=0.0
++        Invoke-RestMethod "$root/api/simulation/resume" -Method Post | Out-Null
++        $watch.Restart() # Ensure the requested window starts after resume has returned.
++        while ($watch.Elapsed.TotalSeconds -lt $ApplicationSeconds) {
++            $endpoints = if ($Polling) { $environment.PollEndpoints } else { @() }
++            $tasks = @($endpoints | ForEach-Object { [Opti02Poller]::Read($client,$root,$_) })
++            foreach ($task in $tasks) { $requests.Add($task.GetAwaiter().GetResult()) }
++            $nextPoll += 1000
++            $delay = $nextPoll - $watch.Elapsed.TotalMilliseconds
++            if ($delay -gt 0) { Start-Sleep -Milliseconds ([int]$delay) }
++        }
++        Invoke-RestMethod "$root/api/simulation/pause" -Method Post | Out-Null
++        $elapsedNanos = $watch.Elapsed.TotalSeconds * 1e9
++        $after = Invoke-RestMethod "$root/experiment/finish" -Method Post
++        $actions = $after.business.actions - $before.business.actions
++        $latencies = @($requests | Where-Object Status -eq 200 | ForEach-Object ElapsedNanos | Sort-Object)
++        $p50 = if ($latencies.Count) { $latencies[[int][Math]::Ceiling(.50*$latencies.Count)-1] } else { $null }
++        $p95 = if ($latencies.Count) { $latencies[[int][Math]::Ceiling(.95*$latencies.Count)-1] } else { $null }
++        $p99 = if ($latencies.Count) { $latencies[[int][Math]::Ceiling(.99*$latencies.Count)-1] } else { $null }
++        $activeNanos = $after.activeElapsedNanos - $before.activeElapsedNanos
++        if ($activeNanos -le 0 -or $actions -le 0 -or $after.failure) { throw "Invalid active workload: $id" }
++        $data = [ordered]@{mode='application'; polling=$condition; activeElapsedNanos=$activeNanos; size=$Size; initial='empty'; seed=11; serverPort=$port; requestedSeconds=$ApplicationSeconds; warmupSeconds=$ApplicationWarmupSeconds; elapsedNanos=$elapsedNanos; executedActions=$actions; before=$before; after=$after; cpuNanos=($after.cpuNanos-$before.cpuNanos); processCpuNanos=($after.processCpuNanos-$before.processCpuNanos); allocatedBytesPerAction=($after.engineAllocatedBytes-$before.engineAllocatedBytes)/$actions; peakObservedHeapBytes=$after.peakObservedHeapBytes; heapSamplePeriodMillis=10; attemptsPerSecond=($after.business.attempts-$before.business.attempts)*1e9/$activeNanos; modificationsPerSecond=($after.business.modifications-$before.business.modifications)*1e9/$activeNanos; httpP50Nanos=$p50; httpP95Nanos=$p95; httpP99Nanos=$p99; httpSamples=$latencies.Count; errors=@($requests | Where-Object { $_.Status -ne 200 -or $_.Error }); requests=$requests; instrumentation= $(if ($Profile) {'JFR-profile; monitor threshold 1 ms'} else {'no JFR'}); colorsLayout=$after.colorsLayout }
++        $data | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $output -Encoding UTF8
++        Stamp-Result $output $Label $id $Order
++    } finally {
++        $client.Dispose()
++        if (!$process.HasExited) { Stop-Process -Id $process.Id -Force }
++    }
++}
++
++Prepare-Version 'baseline' $Reference
++if ($Phase -eq 'Prepare') { return }
++$budgetPath = Join-Path $results 'budgets.json'
++if ($Phase -in @('All','Calibrate') -and !(Test-Path -LiteralPath $budgetPath)) {
++    $budgets = [ordered]@{}
++    foreach ($size in @(500,4000)) { foreach ($initial in @('empty','full')) {
++        Run-Engine 'baseline' $size $initial 11 5000 'calibration' 0 0 3
++        $data = Get-Content (Join-Path $results "raw/calibration-$size-$initial-s11-p0-baseline.json") -Raw | ConvertFrom-Json
++        $budgets["$size-$initial"] = [long]([Math]::Max(10000,[Math]::Min(1000000,[Math]::Ceiling(5000*2e9/$data.elapsedNanos/1000)*1000)))
++    } }
++    $budgets | ConvertTo-Json | Set-Content -LiteralPath $budgetPath -Encoding UTF8
++}
++if ($Phase -eq 'Calibrate') { return }
++if (!(Test-Path -LiteralPath $budgetPath)) { throw 'Run -Phase Calibrate first.' }
++$budgets = Get-Content $budgetPath -Raw | ConvertFrom-Json
++if ($Phase -eq 'All') {
++    foreach ($size in @(500,4000)) { foreach ($initial in @('empty','full')) {
++        for ($repeat=1;$repeat -le $EngineRepetitions;$repeat++) { Run-Engine 'baseline' $size $initial 11 $budgets."$size-$initial" 'engine' $repeat $repeat 3 }
++    } }
++    foreach ($size in @(500,4000)) { foreach ($initial in @('empty','full')) { foreach ($seed in @(11,22,33)) {
++        foreach ($repeat in @(1,2)) { Run-Engine 'baseline' $size $initial $seed 10000 'replay' $repeat $repeat 0 }
++    } } }
++}
++if ($Phase -in @('All','Application')) {
++    foreach ($size in @(500,4000)) { for ($repeat=1;$repeat -le $ApplicationRepetitions;$repeat++) {
++        $conditions = if ($repeat % 2) { @($false,$true) } else { @($true,$false) }
++        for ($index=0;$index -lt 2;$index++) { Run-Application 'baseline' $size $repeat $index $false $conditions[$index] }
++    } }
++}
++if ($Phase -in @('All','Profiles')) {
++    Run-Engine 'baseline' 4000 'full' 11 (4*$budgets.'4000-full') 'profile' 0 0 3
++    Run-Application 'baseline' 4000 0 0 $true $false
++    Run-Application 'baseline' 4000 0 1 $true $true
++}
++Write-Host "Measurements saved in $results"
++if ($Phase -eq 'All') {
++    $v = $versions['baseline']
++    foreach ($profile in (Get-ChildItem -LiteralPath (Join-Path $results 'profiles') -Filter '*.jfr')) {
++        Invoke-LoggedNative $javaPath @('--class-path',$v.cp,'org.pixelwar.pixelwar.domain.JfrSummary',$profile.FullName,$profile.FullName.Replace('.jfr','.summary.json')) (Join-Path $results ('logs/export-' + $profile.BaseName + '.log'))
++    }
++    & $Python (Join-Path $PSScriptRoot 'opti02/analyze.py') $results
++    if ($LASTEXITCODE -ne 0) { throw 'Analysis failed; see scripts/opti02/requirements.txt.' }
++}
+diff --git a/scripts/opti02/CounterExperiment.java b/scripts/opti02/CounterExperiment.java
+new file mode 100644
+index 0000000..c2ed24f
+--- /dev/null
++++ b/scripts/opti02/CounterExperiment.java
+@@ -0,0 +1,239 @@
++package org.pixelwar.pixelwar.domain;
++
++import com.sun.management.HotSpotDiagnosticMXBean;
++import java.lang.management.ManagementFactory;
++import java.lang.reflect.Array;
++import java.lang.reflect.Field;
++import java.nio.file.Files;
++import java.nio.file.Path;
++import java.security.MessageDigest;
++import java.time.Duration;
++import java.util.ArrayList;
++import java.util.HexFormat;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.Random;
++import java.util.concurrent.Executors;
++import java.util.concurrent.ScheduledExecutorService;
++import java.util.concurrent.ScheduledFuture;
++import java.util.concurrent.ScheduledThreadPoolExecutor;
++import java.util.concurrent.TimeUnit;
++import java.util.concurrent.atomic.AtomicLong;
++import jdk.jfr.Configuration;
++import jdk.jfr.Recording;
++import org.pixelwar.pixelwar.HealthController;
++import org.pixelwar.pixelwar.HttpPerformanceFilter;
++import org.pixelwar.pixelwar.SimulationController;
++import org.springframework.boot.SpringApplication;
++import org.springframework.boot.SpringBootConfiguration;
++import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
++import org.springframework.context.annotation.Bean;
++import org.springframework.context.annotation.Import;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** Common experiment harness. Never changes a game rule or the production API. */
++public final class CounterExperiment {
++    private static final Field ACTIONS = field(Simulation.class, "actions");
++    private static final Field STATE = field(Simulation.class, "state");
++    private static final Field CELLS = field(Board.class, "cells");
++    private static final Field POSITIONS = field(Simulation.class, "positions");
++    private static final java.lang.management.ThreadMXBean THREADS = ManagementFactory.getThreadMXBean();
++    private static final com.sun.management.ThreadMXBean ALLOC = (com.sun.management.ThreadMXBean) THREADS;
++    private static final java.lang.management.MemoryMXBean MEMORY = ManagementFactory.getMemoryMXBean();
++    private static final AtomicLong PEAK = new AtomicLong();
++    private static final ScheduledExecutorService SAMPLER = Executors.newSingleThreadScheduledExecutor(task -> {
++        var thread = new Thread(task, "opti-02-heap-sampler"); thread.setDaemon(true); return thread;
++    });
++    private static Board serverBoard;
++    private static Simulation serverSimulation;
++    private static Path serverProfile;
++    private static Recording recording;
++
++    private record Game(Board board, Simulation simulation, FrontierPlacementStrategy strategy) implements AutoCloseable {
++        public void close() { simulation.close(); }
++    }
++    public static void main(String[] args) throws Exception {
++        // mode size initial seed budget warmupSeconds output.json profile.jfr-or-none
++        String mode = args[0], initial = args[2];
++        int size = Integer.parseInt(args[1]);
++        long seed = Long.parseLong(args[3]), budget = Long.parseLong(args[4]);
++        double warmupSeconds = Double.parseDouble(args[5]);
++        Path output = Path.of(args[6]);
++        THREADS.setThreadCpuTimeEnabled(true);
++        ALLOC.setThreadAllocatedMemoryEnabled(true);
++        SAMPLER.scheduleAtFixedRate(() -> PEAK.accumulateAndGet(MEMORY.getHeapMemoryUsage().getUsed(), Math::max), 0, 10, TimeUnit.MILLISECONDS);
++        if (mode.equals("server")) {
++            var game = create(size, initial, seed, true);
++            serverBoard = game.board(); serverSimulation = game.simulation();
++            if (!args[7].equals("none")) serverProfile = Path.of(args[7]);
++            var app = new SpringApplication(ServerConfiguration.class);
++            app.run("--server.port=" + budget, "--spring.application.name=opti-02");
++            return;
++        }
++        if (warmupSeconds > 0) warmup(size, initial, seed, warmupSeconds);
++        System.gc();
++        long preparationStart = System.nanoTime();
++        try (var game = create(size, initial, seed, false)) {
++            long preparationNs = System.nanoTime() - preparationStart;
++            var before = business(game);
++            var layout = layout(game.board());
++            System.gc(); // Drop preparation garbage before timing, identically in both versions.
++            game.simulation().start();
++            if (!args[7].equals("none")) recording = startRecording();
++            PEAK.set(MEMORY.getHeapMemoryUsage().getUsed());
++            long thread = Thread.currentThread().threadId();
++            long cpuStart = THREADS.getCurrentThreadCpuTime(), allocatedStart = ALLOC.getThreadAllocatedBytes(thread);
++            long start = System.nanoTime();
++            runActions(game.simulation(), budget);
++            long elapsed = System.nanoTime() - start;
++            long cpu = THREADS.getCurrentThreadCpuTime() - cpuStart, allocated = ALLOC.getThreadAllocatedBytes(thread) - allocatedStart;
++            PEAK.accumulateAndGet(MEMORY.getHeapMemoryUsage().getUsed(), Math::max);
++            long peak = PEAK.get();
++            game.simulation().pause();
++            if (recording != null) { recording.stop(); recording.dump(Path.of(args[7])); recording.close(); }
++            var after = business(game);
++            long actions = (long) after.get("actions") - (long) before.get("actions");
++            long attempts = (long) after.get("attempts") - (long) before.get("attempts");
++            long modifications = (long) after.get("modifications") - (long) before.get("modifications");
++            var result = map("mode", mode, "size", size, "initial", initial, "seed", seed,
++                    "requestedActions", budget, "executedActions", actions, "warmupSeconds", warmupSeconds,
++                    "preparationNanos", preparationNs, "elapsedNanos", elapsed, "cpuNanos", cpu,
++                    "allocatedBytes", allocated, "allocatedBytesPerAction", allocated / (double) actions,
++                    "peakObservedHeapBytes", peak, "heapSamplePeriodMillis", 10,
++                    "attemptsPerSecond", attempts * 1e9 / elapsed, "modificationsPerSecond", modifications * 1e9 / elapsed,
++                    "before", before, "after", after, "spatialSha256", spatialHash(game.board()),
++                    "colorsLayout", layout, "runtime", runtime(), "errors", List.of());
++            if (actions != budget) throw new IllegalStateException("Executed action count differs from budget");
++            Files.writeString(output, json(result));
++        }
++    }
++    private static void warmup(int size, String initial, long seed, double seconds) throws Exception {
++        try (var game = create(size, initial, seed, false)) {
++            game.simulation().start();
++            long deadline = System.nanoTime() + (long) (seconds * 1e9);
++            while (System.nanoTime() < deadline) runActions(game.simulation(), ACTIONS.getLong(game.simulation()) + 1000);
++        }
++    }
++    private static Game create(int size, String initial, long seed, boolean scheduled) {
++        var board = new Board(size, size);
++        if (initial.equals("full")) {
++            var random = new Random(seed + 1000);
++            for (int y = 0; y < size; y++) for (int x = 0; x < size; x++) board.place(x, y, CellState.values()[1 + random.nextInt(4)]);
++        }
++        var config = new Simulation.Configuration(size, size, 10, 500, 500,
++                new Stock.Configuration(100, 1000, 100, 10000, false), 10, true, "frontier", .1, 10, 8, 20);
++        var strategy = new FrontierPlacementStrategy(new Random(seed), .1, 10, 8, 20);
++        ScheduledExecutorService scheduler = scheduled ? Executors.newSingleThreadScheduledExecutor() : new ScheduledThreadPoolExecutor(1) {
++            @Override public ScheduledFuture<?> scheduleAtFixedRate(Runnable task, long delay, long period, TimeUnit unit) {
++                return super.schedule(() -> {}, 1, TimeUnit.DAYS);
++            }
++        };
++        return new Game(board, new Simulation(board, config, strategy, System::nanoTime, scheduler), strategy);
++    }
++    private static void runActions(Simulation simulation, long total) throws Exception {
++        int first = 0;
++        while (ACTIONS.getLong(simulation) < total) {
++            for (int offset = 0; offset < 4 && ACTIONS.getLong(simulation) < total; offset++) simulation.play((first + offset) % 4, 1);
++            first = (first + 1) % 4;
++            if (first == 0 && STATE.get(simulation) != Simulation.State.RUNNING) throw new IllegalStateException("Unexpected engine stop");
++        }
++    }
++    private static Map<String, Object> business(Game game) {
++        var metrics = game.simulation().metrics();
++        var players = new ArrayList<Object>();
++        for (int i = 0; i < 4; i++) {
++            var player = metrics.players().get(i);
++            var state = metrics.simulation().players().get(i);
++            players.add(map("color", player.player().color().name(), "stock", state.stock(), "eliminated", state.eliminated(),
++                    "attempts", player.attempts(), "modifications", player.modifications(), "actions", player.actions(),
++                    "actionsWithoutStock", player.actionsWithoutStock(), "pixelsConsumed", player.pixelsConsumed().toString(),
++                    "pixelsRefilled", player.pixelsRefilled().toString(), "pixelsDiscarded", player.pixelsDiscardedAtCapacity().toString(),
++                    "conversionsReceived", player.conversionsReceived(), "priorityTarget", game.strategy().priorityTarget(game.board(), player.player().color())));
++        }
++        return map("actions", metrics.actions(), "attempts", metrics.simulation().attempts(), "modifications", metrics.simulation().modifications(),
++                "conversions", metrics.conversions(), "conversionPasses", metrics.conversionPasses(), "boardChanges", metrics.boardChanges(),
++                "counts", metrics.cellsByColor(), "frontierSizes", metrics.frontiers().sizes(), "players", players);
++    }
++    private static Map<String, Object> layout(Board board) throws Exception {
++        Object colors = CELLS.get(board);
++        long bytes = StorageAgent.instrumentation.getObjectSize(colors);
++        int arrays = 1;
++        if (colors instanceof Object[] rows) for (var row : rows) { bytes += StorageAgent.instrumentation.getObjectSize(row); arrays++; }
++        return map("type", colors.getClass().getTypeName(), "arrays", arrays, "totalArrayBytes", bytes,
++                "cells", board.totalCells(), "measurement", "Instrumentation.getObjectSize; color arrays only; shared enum instances excluded");
++    }
++    private static String spatialHash(Board board) throws Exception {
++        var digest = MessageDigest.getInstance("SHA-256");
++        for (int y = 0; y < board.height(); y++) for (int x = 0; x < board.width(); x++) digest.update((byte) board.get(x, y).ordinal());
++        return HexFormat.of().formatHex(digest.digest());
++    }
++    private static Map<String, Object> runtime() {
++        var diagnostic = ManagementFactory.getPlatformMXBean(HotSpotDiagnosticMXBean.class);
++        return map("javaVersion", System.getProperty("java.runtime.version"), "vm", System.getProperty("java.vm.name"),
++                "flags", ManagementFactory.getRuntimeMXBean().getInputArguments(), "os", System.getProperty("os.name"),
++                "gc", ManagementFactory.getGarbageCollectorMXBeans().stream().map(java.lang.management.GarbageCollectorMXBean::getName).toList(),
++                "maxHeapBytes", Runtime.getRuntime().maxMemory(), "processors", Runtime.getRuntime().availableProcessors(),
++                "compressedOops", diagnostic.getVMOption("UseCompressedOops").getValue(),
++                "objectAlignment", diagnostic.getVMOption("ObjectAlignmentInBytes").getValue());
++    }
++    private static Recording startRecording() throws Exception {
++        var value = new Recording(Configuration.getConfiguration("profile"));
++        value.enable("jdk.JavaMonitorEnter").withThreshold(Duration.ofMillis(1)).withStackTrace();
++        value.enable("jdk.ObjectAllocationSample").withStackTrace();
++        value.start();
++        return value;
++    }
++    private static Field field(Class<?> type, String name) {
++        try { var value = type.getDeclaredField(name); value.setAccessible(true); return value; }
++        catch (ReflectiveOperationException exception) { throw new ExceptionInInitializerError(exception); }
++    }
++    public static LinkedHashMap<String, Object> map(Object... pairs) {
++        var result = new LinkedHashMap<String, Object>();
++        for (int i = 0; i < pairs.length; i += 2) result.put(pairs[i].toString(), pairs[i + 1]);
++        return result;
++    }
++    public static String json(Object value) {
++        if (value == null) return "null";
++        if (value instanceof Number || value instanceof Boolean) return value.toString();
++        if (value instanceof Map<?, ?> values) return values.entrySet().stream().map(entry -> json(entry.getKey().toString()) + ":" + json(entry.getValue())).collect(java.util.stream.Collectors.joining(",", "{", "}"));
++        if (value instanceof Iterable<?> values) { var items = new ArrayList<String>(); for (var item : values) items.add(json(item)); return String.join(",", items).transform(text -> "[" + text + "]"); }
++        return "\"" + value.toString().replace("\\", "\\\\").replace("\"", "\\\"").replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t") + "\"";
++    }
++    @SpringBootConfiguration
++    @EnableAutoConfiguration
++    @Import({SimulationController.class, HttpPerformanceFilter.class, HealthController.class, ExperimentEndpoints.class})
++    public static class ServerConfiguration {
++        @Bean(destroyMethod = "close") public Simulation simulation() { return serverSimulation; }
++    }
++    @RestController
++    public static class ExperimentEndpoints {
++        @PostMapping(value = "/experiment/begin", produces = "application/json")
++        public String begin() throws Exception {
++            PEAK.set(MEMORY.getHeapMemoryUsage().getUsed());
++            if (serverProfile != null) recording = startRecording();
++            return snapshot();
++        }
++        @GetMapping(value = "/experiment/snapshot", produces = "application/json")
++        public String snapshot() throws Exception {
++            var strategy = (FrontierPlacementStrategy) POSITIONS.get(serverSimulation);
++            var metrics = serverSimulation.metrics();
++            var performance = serverSimulation.performance().measurements();
++            var os = (com.sun.management.OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
++            return json(map("business", business(new Game(serverBoard, serverSimulation, strategy)),
++                    "elapsedMs", metrics.simulation().elapsedMs(), "activeElapsedNanos", performance.elapsedNanos(),
++                    "engineBlockedNanos", performance.engineBlockedNanos(), "failure", serverSimulation.performance().failure(), "cpuNanos", performance.cpuNanos(),
++                    "engineAllocatedBytes", performance.allocatedBytesPerAction() == null ? null : performance.allocatedBytesPerAction() * performance.actions(),
++                    "processCpuNanos", os.getProcessCpuTime(), "peakObservedHeapBytes", PEAK.get(),
++                    "colorsLayout", layout(serverBoard), "runtime", runtime()));
++        }
++        @PostMapping(value = "/experiment/finish", produces = "application/json")
++        public String finish() throws Exception {
++            String result = snapshot();
++            if (recording != null) { recording.stop(); recording.dump(serverProfile); recording.close(); recording = null; }
++            return result;
++        }
++    }
++}
+diff --git a/scripts/opti02/JfrSummary.java b/scripts/opti02/JfrSummary.java
+new file mode 100644
+index 0000000..83627cb
+--- /dev/null
++++ b/scripts/opti02/JfrSummary.java
+@@ -0,0 +1,61 @@
++package org.pixelwar.pixelwar.domain;
++
++import java.nio.file.Files;
++import java.nio.file.Path;
++import java.util.LinkedHashMap;
++import java.util.HashSet;
++import java.util.Map;
++import java.util.TreeMap;
++import jdk.jfr.consumer.RecordedEvent;
++import jdk.jfr.consumer.RecordedFrame;
++import jdk.jfr.consumer.RecordingFile;
++
++/** Exports real JFR events. Allocation weights are estimates, not exact allocation counts. */
++public final class JfrSummary {
++    public static void main(String[] args) throws Exception {
++        var eventCounts = new TreeMap<String, Long>();
++        var cpuExclusive = new TreeMap<String, Long>();
++        var cpuInclusive = new TreeMap<String, Long>();
++        var cpuStacks = new TreeMap<String, Long>();
++        var allocationClasses = new TreeMap<String, Long>();
++        var allocationStacks = new TreeMap<String, Long>();
++        var monitors = new TreeMap<String, Long>();
++        var monitorCounts = new TreeMap<String, Long>();
++        long gcNanos = 0, gcPauseNanos = 0, allocationSamples = 0;
++        try (var file = new RecordingFile(Path.of(args[0]))) {
++            while (file.hasMoreEvents()) {
++                RecordedEvent event = file.readEvent();
++                String type = event.getEventType().getName();
++                eventCounts.merge(type, 1L, Long::sum);
++                var stack = event.getStackTrace();
++                if (type.equals("jdk.ExecutionSample") && stack != null && !stack.getFrames().isEmpty()) {
++                    var frames = stack.getFrames();
++                    cpuExclusive.merge(method(frames.getFirst()), 1L, Long::sum);
++                    var seen = new HashSet<String>();
++                    for (var frame : frames) if (seen.add(method(frame))) cpuInclusive.merge(method(frame), 1L, Long::sum);
++                    cpuStacks.merge(frames.stream().map(JfrSummary::method).collect(java.util.stream.Collectors.joining(";")), 1L, Long::sum);
++                }
++                if (type.equals("jdk.ObjectAllocationSample")) {
++                    allocationSamples++;
++                    long weight = event.getLong("weight");
++                    allocationClasses.merge(event.getClass("objectClass").getName(), weight, Long::sum);
++                    if (stack != null) allocationStacks.merge(stack.getFrames().stream().map(JfrSummary::method).collect(java.util.stream.Collectors.joining(";")), weight, Long::sum);
++                }
++                if (type.equals("jdk.JavaMonitorEnter")) {
++                    String monitor = event.getClass("monitorClass").getName();
++                    monitors.merge(monitor, event.getDuration().toNanos(), Long::sum);
++                    monitorCounts.merge(monitor, 1L, Long::sum);
++                }
++                if (type.equals("jdk.GarbageCollection")) gcNanos += event.getDuration().toNanos();
++                if (type.equals("jdk.GCPhasePause")) gcPauseNanos += event.getDuration().toNanos();
++            }
++        }
++        Files.writeString(Path.of(args[1]), CounterExperiment.json(CounterExperiment.map(
++                "recording", Path.of(args[0]).getFileName().toString(), "eventCounts", eventCounts,
++                "cpuExclusiveSamples", cpuExclusive, "cpuInclusiveSamples", cpuInclusive, "cpuStacks", cpuStacks,
++                "allocationSamples", allocationSamples, "allocationEstimatedBytesByClass", allocationClasses,
++                "allocationEstimatedBytesByStack", allocationStacks, "monitorWaitNanos", monitors, "monitorEvents", monitorCounts,
++                "gcCollectionDurationNanos", gcNanos, "gcStopTheWorldPauseNanos", gcPauseNanos, "monitorThresholdMillis", 1)));
++    }
++    private static String method(RecordedFrame frame) { return frame.getMethod().getType().getName() + "." + frame.getMethod().getName(); }
++}
+diff --git a/scripts/opti02/StorageAgent.java b/scripts/opti02/StorageAgent.java
+new file mode 100644
+index 0000000..e046262
+--- /dev/null
++++ b/scripts/opti02/StorageAgent.java
+@@ -0,0 +1,9 @@
++package org.pixelwar.pixelwar.domain;
++
++import java.lang.instrument.Instrumentation;
++
++/** Measures only the arrays storing colors; shared enum singleton objects are excluded. */
++public final class StorageAgent {
++    public static volatile Instrumentation instrumentation;
++    public static void premain(String args, Instrumentation value) { instrumentation = value; }
++}
+diff --git a/scripts/opti02/analyze.py b/scripts/opti02/analyze.py
+new file mode 100644
+index 0000000..ac63506
+--- /dev/null
++++ b/scripts/opti02/analyze.py
+@@ -0,0 +1,288 @@
++"""Analyze a single retained production version; never invent an optimized counterpart."""
++import argparse
++import csv
++import hashlib
++import json
++import os
++from pathlib import Path
++import re
++import statistics
++import subprocess
++import sys
++
++
++def load(path):
++    return json.loads(Path(path).read_text(encoding="utf-8-sig"))
++
++
++def dump(path, value):
++    Path(path).write_text(json.dumps(value, indent=2, ensure_ascii=False), encoding="utf-8")
++
++
++def write_csv(path, rows):
++    if rows:
++        with Path(path).open("w", newline="", encoding="utf-8") as stream:
++            writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
++            writer.writeheader()
++            writer.writerows(rows)
++
++
++def stats(values):
++    return dict(n=len(values), mean=statistics.mean(values), median=statistics.median(values),
++                stdev=statistics.stdev(values) if len(values) > 1 else None,
++                sampleVariance=statistics.variance(values) if len(values) > 1 else None,
++                minimum=min(values), maximum=max(values))
++
++
++def business(run, point):
++    return run[point]["business"] if run["mode"] == "application" else run[point]
++
++
++def analyze(root):
++    runs = [load(path) for path in sorted((root / "raw").glob("*.json"))]
++    observations, audit, groups = [], [], {}
++    for run in runs:
++        for point in ("before", "after"):
++            state = business(run, point)
++            for total, per_player in (("actions", "actions"), ("attempts", "attempts"),
++                                      ("modifications", "modifications"), ("conversions", "conversionsReceived")):
++                assert state[total] == sum(player[per_player] for player in state["players"]), (run["runId"], point, total)
++            assert state["boardChanges"] == state["modifications"] + state["conversions"]
++            assert sum(state["counts"].values()) == run["size"] ** 2
++            assert state["modifications"] <= state["attempts"]
++            assert all(int(player["pixelsConsumed"]) == 0 for player in state["players"])  # disabled stock in this campaign
++        before, after = business(run, "before"), business(run, "after")
++        assert run["executedActions"] == after["actions"] - before["actions"]
++        assert not run["errors"], run["runId"]
++        if run["mode"] == "application":
++            assert run["activeElapsedNanos"] >= 20e9
++            assert not run["after"]["failure"]
++        audit.append(dict(runId=run["runId"], mode=run["mode"], size=run["size"], initial=run["initial"],
++                          seed=run["seed"], polling=run.get("polling", "none"), actions=run["executedActions"],
++                          attempts=after["attempts"]-before["attempts"], modifications=after["modifications"]-before["modifications"],
++                          conversions=after["conversions"]-before["conversions"],
++                          eliminatedBefore=sum(p["eliminated"] for p in before["players"]),
++                          eliminatedAfter=sum(p["eliminated"] for p in after["players"]),
++                          httpRequests=len(run.get("requests", [])), httpErrors=len(run["errors"]),
++                          wallNanos=run["elapsedNanos"], activeNanos=run.get("activeElapsedNanos"), invariantChecks=True))
++        if run["mode"] not in ("engine", "application") or "-profile-" in run["runId"]:
++            continue
++        metrics = {key: run[key] for key in ("elapsedNanos", "activeElapsedNanos", "attemptsPerSecond", "modificationsPerSecond",
++                   "cpuNanos", "processCpuNanos", "allocatedBytesPerAction", "peakObservedHeapBytes", "executedActions",
++                   "httpP50Nanos", "httpP95Nanos", "httpP99Nanos") if run.get(key) is not None}
++        if run["mode"] == "application":
++            a, b = run["before"].get("engineBlockedNanos"), run["after"].get("engineBlockedNanos")
++            if a is not None and b is not None:
++                metrics["engineBlockedNanos"] = b-a
++        for metric, value in metrics.items():
++            key = run["mode"], run["size"], run["initial"], run["seed"], run.get("polling", "none"), metric
++            groups.setdefault(key, []).append(value)
++            observations.append(dict(runId=run["runId"], mode=key[0], size=key[1], initial=key[2], seed=key[3], polling=key[4], metric=metric, value=value))
++    summary = [dict(zip(("mode", "size", "initial", "seed", "polling", "metric"), key), **stats(values)) for key, values in sorted(groups.items())]
++    write_csv(root / "observations.csv", observations)
++    write_csv(root / "summary.csv", summary)
++    write_csv(root / "workload-verification.csv", audit)
++    replays = []
++    for size in (500, 4000):
++        for initial in ("empty", "full"):
++            for seed in (11, 22, 33):
++                pair = [run for run in runs if run["mode"] == "replay" and run["size"] == size and run["initial"] == initial and run["seed"] == seed]
++                assert len(pair) == 2, (size, initial, seed)
++                a, b = pair
++                same = a["before"] == b["before"] and a["after"] == b["after"] and a["spatialSha256"] == b["spatialSha256"]
++                replays.append(dict(size=size, initial=initial, seed=seed, equivalent=same, actions=a["executedActions"],
++                                    spatialSha256=a["spatialSha256"], runs=[x["runId"] for x in pair], comparison="repeatability of identical production code, not optimization equivalence"))
++    dump(root / "replay-verification.json", replays)
++    assert all(x["equivalent"] for x in replays)
++    engine_checks = []
++    for size in (500, 4000):
++        for initial in ("empty", "full"):
++            group = [r for r in runs if r["mode"] == "engine" and r["size"] == size and r["initial"] == initial]
++            assert len(group) == 5
++            same = all(r["before"] == group[0]["before"] and r["after"] == group[0]["after"] and r["spatialSha256"] == group[0]["spatialSha256"] for r in group)
++            engine_checks.append(dict(size=size, initial=initial, repetitions=len(group), identicalBusinessAndSpatialState=same))
++            assert same
++    dump(root / "engine-consistency.json", engine_checks)
++    source = root / "builds/baseline/source"
++    manifest, counters = {}, []
++    for path in sorted((source / "src/main").rglob("*")):
++        if path.is_file():
++            name = path.relative_to(source).as_posix()
++            manifest[name] = hashlib.sha256(path.read_bytes()).hexdigest()
++            if path.suffix == ".java":
++                lines = path.read_text(encoding="utf-8-sig").splitlines()
++                matches = [{"line": n, "text": line.strip()} for n, line in enumerate(lines, 1)
++                           if re.search(r"Atomic|LongAdder|DoubleAdder|LongAccumulator|private .*long|private .*int|synchronized|reset\(", line)]
++                counters.append(dict(file=name, matches=matches))
++    atomics = [dict(file=x["file"], **m) for x in counters for m in x["matches"] if re.search(r"Atomic\w*|LongAdder|DoubleAdder|LongAccumulator", m["text"])]
++    dump(root / "source-inventory.json", dict(atomicMatchesInProduction=atomics, sources=manifest, accessLocations=counters,
++                                             note="Text search locations support the manual access audit; this is not a synchronization proof by itself."))
++    assert not atomics, "Reassess the decision: production atomics exist"
++    plots(root, summary)
++    report(root, runs, summary)
++    print(f"{len(runs)} runs, {len(summary)} statistical rows, 12 successful repeated replays; no production candidate.")
++
++
++def plots(root, summary):
++    os.environ.setdefault("MPLCONFIGDIR", str(root / "matplotlib-cache"))
++    import matplotlib
++    matplotlib.use("Agg")
++    import matplotlib.pyplot as plt
++    import numpy as np
++    figures = root / "figures"
++    figures.mkdir(exist_ok=True)
++    plt.rcParams.update({"figure.dpi": 150, "font.size": 10, "axes.spines.top": False, "axes.spines.right": False})
++    engine = [row for row in summary if row["mode"] == "engine" and row["metric"] == "attemptsPerSecond"]
++    fig, ax = plt.subplots(figsize=(9, 5))
++    ax.bar(range(len(engine)), [r["mean"]/1e6 for r in engine], yerr=[r["stdev"]/1e6 for r in engine], capsize=4, color="#526d82")
++    ax.set_xticks(range(len(engine)), [f"{r['size']} × {r['size']}\n{'vide' if r['initial']=='empty' else 'rempli'}" for r in engine])
++    ax.set_ylabel("Millions de tentatives / s")
++    ax.set_title("Baseline actuelle · 5 JVM neuves par scénario · moyenne ± écart type")
++    fig.tight_layout(); fig.savefig(figures / "baseline-engine.png"); plt.close(fig)
++    fig, ax = plt.subplots(figsize=(8, 5))
++    for offset, polling, label, color in ((-.18,"no-polling","Sans polling", "#526d82"),(.18,"polling","Avec polling", "#238b71")):
++        rows = [next(row for row in summary if row["mode"] == "application" and row["size"] == size and row["polling"] == polling and row["metric"] == "attemptsPerSecond") for size in (500,4000)]
++        ax.bar(np.arange(2)+offset, [r["mean"]/1e6 for r in rows], .34, yerr=[r["stdev"]/1e6 for r in rows], capsize=4, label=label, color=color)
++    ax.set_xticks([0,1], ["500 × 500", "4000 × 4000"]); ax.set_ylabel("Millions de tentatives / seconde active")
++    ax.set_title("Même code · charge HTTP différente · 3 JVM par condition")
++    ax.legend(); fig.text(.02,.01,"Même code, pas un gain d'optimisation. SMALL atteint un vainqueur : nombreux essais sans changement.\nLes débits de modifications sont présentés séparément dans le rapport ; états finaux différents.",fontsize=8)
++    fig.tight_layout(rect=(0,.07,1,1)); fig.savefig(figures / "baseline-application.png"); plt.close(fig)
++    for path in sorted((root / "profiles").glob("*.summary.json")):
++        data = load(path)
++        for field, label, suffix, scale in (("cpuExclusiveSamples", "Échantillons CPU exclusifs", "cpu", 1),
++                                           ("allocationEstimatedBytesByClass", "Mio alloués estimés", "allocations", 2**20),
++                                           ("monitorWaitNanos", "Attentes cumulées de moniteurs (ms), seuil 1 ms", "moniteurs", 1e6)):
++            items = sorted(data[field].items(), key=lambda x:x[1], reverse=True)[:10]
++            fig, ax = plt.subplots(figsize=(12,6))
++            if items:
++                ax.barh(range(len(items)), [v/scale for _,v in items], color="#526d82")
++                ax.set_yticks(range(len(items)), [k.replace("org.pixelwar.pixelwar.domain.","") for k,_ in items]); ax.invert_yaxis()
++            else:
++                ax.text(.5,.5,"Aucun événement retenu par ce profil / seuil",ha="center",transform=ax.transAxes)
++            ax.set_xlabel(label); ax.set_title(path.stem.replace(".summary", ""))
++            fig.text(.02,.015,"JFR réel séparé du débit principal. CPU échantillonné, pas un temps exact ; allocations estimées.\nLes moniteurs ne mesurent pas le coût des atomiques ; absence d'événement ≠ absence d'attente.",fontsize=8)
++            fig.tight_layout(rect=(0,.07,1,1)); fig.savefig(figures / f"{path.stem}-{suffix}.png"); plt.close(fig)
++    dump(root / "plot-dependencies.json", dict(python=sys.version, matplotlib=matplotlib.__version__, numpy=np.__version__))
++
++
++def fmt(value, scale=1, digits=2):
++    return "—" if value is None else f"{value/scale:,.{digits}f}".replace(",", " ").replace(".", ",")
++
++
++def report(root, runs, summary):
++    meta, env = load(root / "builds/baseline/build.json"), load(root / "environment.json")
++    p = "02-compteurs/"
++    get = lambda mode,size,initial,polling,metric: next(row for row in summary if row['mode']==mode and row['size']==size and row['initial']==initial and row['polling']==polling and row['metric']==metric)
++    lines = [f"""# Optimisation 02 — étude du coût des compteurs
++
++## Décision et résultat
++
++**Piste non applicable dans cette architecture : aucun compteur atomique redondant n'existe en production.** Les compteurs techniques sont déjà des `long` ou `long[]` sous le moniteur Simulation, ceux du Board sous Board, et les fenêtres HTTP sous le filtre. Aucun gain de production n'est annoncé et aucun changement de compteur, verrou, gameplay, API ou métrique permanente n'est livré.
++
++L'étape 01 a été conservée : les couleurs occupent un `byte[]`. Le départ de cette branche `opti/02-compteurs` est `180012fc1c1cf883a0dca233806093440baa113c`, état fonctionnel de `refacto_metriques`. La référence V3 historique et la branche de départ sont conservées. La référence **effectivement mesurée** est `{meta['commit']}` : son code de production est identique au départ, et son commit ajoute seulement le banc et le diagnostic. Le binaire mesuré porte le SHA-256 `{meta['jarSha256']}` ; celui de l'agent/banc est `{meta['harnessSha256']}` ([build](02-compteurs/build-baseline.json)). Le [patch](02-compteurs/patches/etude.patch) et le [contrôle de production](02-compteurs/production-preservation.json) délimitent le changement.
++
++La mission demande explicitement, en l'absence d'atomiques redondants, de livrer l'inventaire, les profils et cette conclusion sans fabriquer d'optimisation. Les tableaux avant/après, accélération et gain marginal sont donc **non applicables**, et non égaux à zéro mesuré. Les mesures ci-dessous décrivent une baseline actuelle. Cinq répétitions moteur et trois répétitions applicatives par condition remplacent les paires avant/après sans candidat ; ce n'est pas une comparaison de deux implémentations.
++
++La branche active du dossier principal a changé pendant la campagne. Les JVM mesurées proviennent d'une archive Git isolée et n'ont pas été affectées. L'étude et la remise ont été finalisées dans `target/opti-02/worktree` ; `refacto_metriques` reste active et inchangée dans le dossier principal. Le [journal d'exécution](02-compteurs/incidents.md) distingue ces incidents de pilotage d'une régression du moteur.
++
++Les tests Maven de la référence reconstruite passent : **70 tests, zéro échec, zéro erreur**. Douze couples de rejeux répétés vérifient les mêmes états métier et SHA-256 spatiaux sur 500/4000, vide/rempli et graines 11/22/33. Ils prouvent la répétabilité du banc sur un code identique ; ils ne sont pas présentés comme un avant/après d'optimisation.
++
++## Environnement et protocole
++
++Les observations complètes sont dans [environment.json]({p}environment.json), [versions JVM]({p}java-version.txt), [Maven]({p}maven-version.txt), [PowerShell]({p}powershell-version.txt), [dépendances Python]({p}python-dependencies.txt), [versions de tracé]({p}plot-dependencies.json) et [invocations]({p}invocations.jsonl). CPU : {env['Cpu']['Name'].strip()}, {env['Cpu']['NumberOfCores']} cœurs physiques et {env['Cpu']['NumberOfLogicalProcessors']} processeurs logiques ; RAM visible {env['Computer']['TotalPhysicalMemory']} octets. OS : {env['Os']['Caption']} {env['Os']['Version']} {env['Os']['OSArchitecture']}. Caches CIM : L2 {env['Cpu']['L2CacheSize']} Kio, L3 {env['Cpu']['L3CacheSize']} Kio ; L1 et topologie fine non mesurées. JDK OpenJDK 27 (`27+35-2325`), compilation ciblant Java 21 ; mêmes flags `-Xms2g -Xmx2g -XX:+UseG1GC`, même agent Instrumentation.
++
++Chaque essai est une JVM neuve. Moteur : chauffe de 3 s sur un jeu jetable, puis recréation du plateau et RNG de départ ; création et GC de préparation hors chronométrage. Plateau rempli par les mêmes couleurs pseudo-aléatoires (`Random(seed+1000)`), stratégie `Random(seed)` ; ordre joueur tournant et actions réelles de Simulation. Les poses de préparation remplissent aussi la file de candidats de conversion : la première passe dense reste dans le travail mesuré, comme à l'étape 01. Ce scénario n'est pas un plateau rempli déjà stabilisé. Budget calibré sur 5 000 actions puis figé dans [budgets.json]({p}budgets.json), cible d'environ 2 s estimée par la calibration, sans garantie de durée réelle constante. Cinq répétitions par taille/état, graine 11. Les rejoués ont 10 000 actions, sans chauffe, deux exécutions indépendantes par cas et graine.
++
++Application : scheduler réel à 10 ns, fenêtre demandée de 20 s après 5 s de chauffe, trois JVM par taille et condition. Ordre des conditions alterné sans/avec puis avec/sans, puis sans/avec. La chauffe applicative poursuit le même jeu, comme à l'étape 01 ; sa stabilité JIT n'est pas démontrée statistiquement. Sans polling : aucune requête périodique, mais démarrage/pause/reprise et snapshots de début/fin restent nécessaires. Avec polling : chaque seconde, quatre GET concurrents `/api/simulation`, `/api/simulation/scores`, `/api/performance`, `/api/board/preview`, réponses intégrales et aperçu 500 × 500 inchangés. Boucles synchrones par batch : si un batch excède la période, aucune cadence obtenue de 4 req/s n'est présumée ; les requêtes réelles figurent dans les JSON. Port local libre choisi par essai.
++
++Paramètres de jeu identiques à l'étape 01 : frontier, exploration 0,10, échantillon 10, bonus faible adversaire 8, maintien cible 20 actions, 10 poses maximum/action, conversion incrémentale simultanée active, stock désactivé pour les charges reproductibles. Les règles de consommation conditionnelle lorsque le stock est activé sont conservées et couvertes par les tests existants. Une action ignorée pour un joueur éliminé ne gonfle pas les compteurs. États et éliminations réels sont conservés par essai.
++
++Adaptations du banc 01 : classe CounterExperiment isolée sous `scripts/opti02` ; ajout aux relevés, par getters existants, du temps actif exact et de l'erreur moteur ; conditions HTTP distinctes et percentile P50. Le seul AtomicLong du banc protège son sampler mémoire concurrent : le retirer serait incorrect. Le code de production et ses tests n'ont pas été modifiés.
++
++La base de débit applicative est désormais le **delta exact de temps actif** du PerformanceTracker, et non la durée murale externe du pilote. Les deux sont enregistrés. Cela respecte la mission 02 mais empêche d'annoncer directement un gain cumulé à partir des anciennes tables 01. Lors de la campagne initiale le chronomètre mural débute juste avant resume ; le script de livraison le démarre après le retour de resume pour garantir la fenêtre demandée. Les fenêtres actives réellement obtenues sont vérifiées individuellement à au moins 20 s ; aucun essai trop court ne peut passer l'analyse. CPU moteur : delta du thread moteur collecté aux transitions ; CPU processus : delta MXBean entre snapshots, avec petite enveloppe de pilotage, pas uniquement le moteur. HTTP : durée murale client par GET, lecture complète comprise ; P50/P95/P99 nearest rank sur les succès, erreurs séparées. Le pic de heap est échantillonné toutes les 10 ms ; les octets alloués/action sont des deltas de ressources, pas la mémoire retenue.
++
++Pas d'affinité, de fréquence CPU ni de température imposées ; autres activités Windows possibles. Aucune attribution causale d'un écart entre conditions à une instruction de compteur, aucun compteur matériel de cache-misses. G1, Instrumentation et le sampler sont conservés dans tous les essais. JFR est réservé à trois JVM séparées : moteur DEFAULT rempli, application DEFAULT sans et avec polling, seuil JavaMonitorEnter de 1 ms.
++
++""", Path(__file__).with_name("inventaire.md").read_text(encoding="utf-8"), "\n\n## Mesures actuelles et absence de candidat\n\n"]
++    lines += ["Unité : temps de charge moteur en secondes, débit en tentatives/s. σ et variance utilisent l'échantillon (diviseur n−1). Toutes les valeurs non arrondies sont dans [summary.csv](02-compteurs/summary.csv) et [observations.csv](02-compteurs/observations.csv). Le temps d'une fenêtre applicative ne constitue pas le temps d'une charge fixe.\n\n",
++              "| Scénario | n | Temps moyen / médiane / σ (s) | Variance (s²) | Débit moyen / médiane / σ (tentatives/s) | Variance ((tentatives/s)²) | Après / gain |\n|---|---:|---|---:|---|---:|---|\n"]
++    cases = [("engine",size,initial,"none") for size in (500,4000) for initial in ("empty","full")]+[("application",size,"empty",poll) for size in (500,4000) for poll in ("no-polling","polling")]
++    for mode,size,initial,polling in cases:
++        t = get(mode,size,initial,polling,"elapsedNanos"); r = get(mode,size,initial,polling,"attemptsPerSecond")
++        assert t['n'] == (5 if mode=='engine' else 3)
++        name=f"{mode} {size}, {initial}, {polling}"
++        lines.append(f"| {name} | {t['n']} | {' / '.join(fmt(t[k],1e9,3) for k in ('mean','median','stdev'))} | {fmt(t['sampleVariance'],1e18,6)} | {' / '.join(fmt(r[k]) for k in ('mean','median','stdev'))} | {fmt(r['sampleVariance'])} | Non applicable |\n")
++    lines.append("\n**Limite métier de SMALL applicatif : les six fenêtres commencent sans élimination et finissent avec trois joueurs éliminés. Après le vainqueur, le scheduler continue d'exécuter les poses du survivant, essentiellement sans changement. Les appels des joueurs éliminés sont exclus des actions, mais les tentatives réelles du survivant restent comptées selon la définition existante. Leur taux élevé ne mesure donc pas une capacité utile de guerre territoriale et ne doit pas être présenté comme un gain.** Le nombre de modifications et conversions réellement réalisées reste disponible par fenêtre ; faute d'horodatage du dernier affrontement, le débit limité à la phase contestée n'est pas mesurable rétrospectivement. Les données de fin de partie ne sont ni effacées ni remplacées par un autre paramétrage. Ce scénario est une limite du banc et reste partiel pour comparer la capacité utile ; aucun gain n'en est déduit.\n\n![Débit moteur actuel](02-compteurs/figures/baseline-engine.png)\n\n![Conditions HTTP](02-compteurs/figures/baseline-application.png)\n\n| Scénario | Actions moyennes | Modifications/s moyennes | CPU moteur moyen (ms) | Alloué/action (octets) | Pic heap moyen (Mio) |\n|---|---:|---:|---:|---:|---:|\n")
++    for mode,size,initial,polling in cases:
++        keys=[("executedActions",1),("modificationsPerSecond",1),("cpuNanos",1e6),("allocatedBytesPerAction",1),("peakObservedHeapBytes",2**20)]
++        lines.append(f"| {mode} {size}, {initial}, {polling} | "+" | ".join(fmt(get(mode,size,initial,polling,k)['mean'],scale) for k,scale in keys)+" |\n")
++    sizes = {size: next(r['colorsLayout']['totalArrayBytes'] for r in runs if r['mode']=='engine' and r['size']==size) for size in (500,4000)}
++    lines.append(f"\nLes actions, conversions et éliminations de chaque essai sont dans [workload-verification.csv](02-compteurs/workload-verification.csv). Les tableaux supplémentaires CPU processus, attentes et percentiles conservent leur dispersion dans summary.csv. Aucune amélioration d'allocation ou mémoire n'est attribuée à cette étude sans changement. La mémoire des couleurs reste celle du byte[] de l'étape 01 : **{sizes[500]} octets pour SMALL et {sizes[4000]} octets pour DEFAULT**, observés par Instrumentation, hors autres index.\n\n### Requêtes et fenêtres applicatives réellement obtenues\n\n| Essai | Temps actif / mural (s) | Actions | Requêtes / erreurs | P50 / P95 / P99 (ms) | CPU processus (ms) |\n|---|---|---:|---|---|---:|\n")
++    for run in runs:
++        if run['mode']=='application' and '-profile-' not in run['runId']:
++            lines.append(f"| {run['runId']} | {fmt(run['activeElapsedNanos'],1e9,3)} / {fmt(run['elapsedNanos'],1e9,3)} | {run['executedActions']} | {len(run['requests'])} / {len(run['errors'])} | {' / '.join(fmt(run.get(k),1e6,3) for k in ('httpP50Nanos','httpP95Nanos','httpP99Nanos'))} | {fmt(run['processCpuNanos'],1e6)} |\n")
++    lines.append("\nLes percentiles sans polling sont absents (—), pas nuls. Les 20 secondes sont un minimum demandé ; temps actif et temps mural peuvent différer à cause des commandes. Les 3 répétitions sont trop peu nombreuses pour prétendre à une estimation précise des queues de latence. Aucun percentile global mélangeant les tailles n'est calculé.\n\n## Profils réels et interprétation\n\n")
++    for path in sorted((root/'profiles').glob('*.summary.json')):
++        data=load(path); stem=path.stem
++        lines.append(f"### {path.name}\n\n[Export intégral]({p}profiles/{path.name}) et [JFR original]({p}profiles/{data['recording']}) dans l'archive de remise. CPU inclusif, exclusif et piles d'allocations sont conservés.\n\n")
++        cpu=sorted(data['cpuExclusiveSamples'].items(),key=lambda x:x[1],reverse=True)[:5]
++        alloc=sorted(data['allocationEstimatedBytesByClass'].items(),key=lambda x:x[1],reverse=True)[:5]
++        lines.append("CPU exclusif dominant : "+" ; ".join(f"`{k}` : {v} samples" for k,v in cpu)+".\n\n")
++        lines.append("Allocations estimées : "+" ; ".join(f"`{k}` : {fmt(v/2**20)} Mio" for k,v in alloc)+".\n\n")
++        lines.append(f"Collections GC (durée totale) : {fmt(data['gcCollectionDurationNanos'],1e6)} ms ; pauses GCPhasePause : {fmt(data['gcStopTheWorldPauseNanos'],1e6)} ms. Ce sont deux mesures distinctes.\n\n| Classe du moniteur | Événements ≥ 1 ms | Attente cumulée (ms) |\n|---|---:|---:|\n")
++        for key,value in sorted(data['monitorWaitNanos'].items(),key=lambda x:x[1],reverse=True):
++            lines.append(f"| `{key}` | {data['monitorEvents'][key]} | {fmt(value,1e6)} |\n")
++        if not data['monitorWaitNanos']: lines.append("| Aucun événement retenu | 0 | 0 observé à ce seuil |\n")
++        for suffix in ('cpu','allocations','moniteurs'):
++            lines.append(f"\n![JFR {suffix}]({p}figures/{stem}-{suffix}.png)\n")
++    lines.append(f"""
++Les incréments primitifs sont susceptibles d'être inlinés ; un profil échantillonné ne sépare pas leur coût de leur méthode englobante. Aucune absence de symbole AtomicLong dans une pile n'est interprétée comme preuve de coût nul. C'est l'inspection des champs et de tous les chemins d'accès qui établit l'absence de candidat. Les moniteurs mesurent un autre mécanisme que les instructions atomiques ; leur fréquence ne mesure pas le coût d'un CAS. Les temps cumulés de threads peuvent dépasser le temps mural et les événements inférieurs au seuil ne sont pas comptés.
++
++Les méthodes et classes dominantes affichées ci-dessus orientent une prochaine hypothèse vers la stratégie de frontière, les allocations de coordonnées/collections et le coût de lecture/aperçu sous polling, selon le scénario. Cette étude ne modifie aucun de ces chemins et ne prouve pas qu'une refonte particulière les améliorerait. Les profils ne sont pas des mesures de scalabilité parallèle.
++
++## Correction, tests et limites
++
++[Tests de construction]({p}logs/build-baseline.log), [rejeux]({p}replay-verification.json), [invariants]({p}workload-verification.csv) et [inventaire des sources]({p}source-inventory.json) sont conservés. Les invariants vérifient pour chaque snapshot global la somme des compteurs par joueur, l'attribution des conversions, changements = modifications + conversions et somme des couleurs = surface, avec le même état spatial pour les rejeux. Les durées et mesures JVM sont exclues de l'égalité. Le stock est désactivé dans les benchmarks ; la validation du stock activé reste celle des tests métier existants.
++
++Aucun compteur modifié, donc aucun nouveau test concurrent de remplacement n'est ajouté. Les tests existants couvrent notamment pose alliée sans débit du stock, action sans stock, attribution après pose sans changement, conversions différées/simultanées, erreur partielle, reset, ancienne génération et pause/stop. Le test scheduler historique utilise des attentes temporisées et ne constitue pas une nouvelle preuve exhaustive de tous les entrelacements ; le test du filtre utilise des latches, avec libération temporisée. Cette limite est déclarée, sans présenter ces tests comme un nouveau protocole par barrières. Le maintien bit pour bit du code de production est ici la garantie de non-régression du changement livré (banc/documentation uniquement).
++
++La cohérence ne s'exige que dans un même snapshot sous son verrou. Deux requêtes différentes peuvent naturellement voir des actions différentes. Les objets Stock et PerformanceTracker ne sont pas déclarés thread-safe isolément. Un Board injecté doit respecter ses propres méthodes synchronisées ; il ne rend pas les mutations externes transactionnelles avec les métriques Simulation.
++
++Aucun échec de solution n'a été inventé. Le lancement Maven initial sous sandbox a échoué avant tests ; le journal initial disponible et la reconstruction autorisée ont réussi. Une éventuelle panne du banc doit rester dans les journaux et ne serait pas une régression des compteurs. Pas de JMH : aucun microbenchmark facultatif ni optimisation fictive n'est nécessaire pour établir la non-applicabilité.
++
++## Conclusion et reproduction
++
++**Conserver la version actuelle ; ne pas modifier les compteurs.** Accélération temporelle `temps avant / temps après`, variation du débit `100 × (débit après / débit avant − 1)` et réduction de temps `100 × (1 − temps après / temps avant)` : non applicables faute de candidat après. Le gain marginal 02 et le gain cumulé depuis V3 restent non mesurés ; on n'additionne pas les pourcentages de l'étape 01. La comparaison polling/sans polling est une comparaison de charges différentes sur le même code, pas un avant/après de production.
++
++Commande principale exécutée depuis la racine du dépôt, avec JDK et versions de Python documentés :
++
++```powershell
++$env:PYTHONPATH='C:/Users/gui35/ideaProjects/pixel-war/target/opti-01/python-libs'
++.\\scripts\\benchmark-opti-02.ps1 -Reference {meta['commit']} -Java 'C:/Users/gui35/.jdks/openjdk-27/bin/java.exe' -Python 'C:/Python314/python.exe' -ResultsDir 'C:/Users/gui35/ideaProjects/pixel-war/target/opti-02/results' -Phase All -Resume
++```
++
++Installer au besoin `scripts/opti02/requirements.txt` dans un environnement Python isolé. Utiliser un ResultsDir neuf et omettre `-Resume` pour refaire toute la campagne. Le pilote reconstruit depuis `git archive`, teste, calibre, lance les JVM, exporte les JFR et appelle `scripts/opti02/analyze.py` pour les CSV, figures et ce rapport. `-Resume` ne reprend que les essais manquants et vérifie les commits. Le banc Java exact est dans le commit mesuré ; les scripts d'analyse et de remise sont dans le commit de livraison. L'archive contient aussi le binaire et l'agent réellement mesurés, les références, sources du banc et patch. Le dépôt Git avec la référence indiquée, JDK complet, dépendances Maven, Windows PowerShell et Python sont nécessaires pour recompiler ; aucune clé ni dossier .git complet n'est livré.
++
++Le script `scripts/opti02/deliver.py <results> <repo> <archive>` publie les preuves et crée `target/audit-opti-02.zip`, contrôle SHA-256 et liens Markdown après extraction. [Index]({p}INDEX.md), [dictionnaire]({p}DICTIONNAIRE.md). JFR remplace le rôle de pprof ; le pilote PowerShell orchestre les forks à la place d'Hyperfine, mais exclut le démarrage JVM du chronométrage Java. Leur acceptation au barème relève de l'évaluateur.
++
++## Correspondance avec le barème
++
++| Critère | Points | Statut | Section et preuve | Reste / limite |
++|---|---:|---|---|---|
++| Environnement et métrologie | 3 | Partiel | Environnement/protocole, CSV individuels, 5 répétitions moteur, 3 par condition HTTP | Pas de candidat donc pas de paires avant/après ; SMALL applicatif atteint un vainqueur, taux de tentatives non représentatif de travail utile ; fréquence/affinité et stabilité JIT non contrôlées |
++| Diagnostic et profiling réel | 5 | Couvert pour cette étude | Inventaire et trois JFR DEFAULT, CPU/allocations/moniteurs et vues annotées | Coût exact des incréments inlinés non isolé ; pas de counters matériel |
++| Journal d'optimisation | 5 | Couvert pour cette étude | Diagnostic préalable, inventaire de tous les accès, aucun retrait de verrou | Aucun gain ni preuve de scalabilité parallèle |
++| Échec constructif | 3 | Non traité | Non-applicabilité établie sans expérience artificielle | Pas de tentative de production réellement régressive |
++| Reproductibilité et synthèse | 4 | Couvert pour cette étude | Script unique de campagne, synthèse, sources, raw, figures, archive et manifeste | Dépôt et dépendances requis ; archive vérifiée après extraction |
++| Gouvernance IA | +2 | Non traité | Aucun constitution.md trouvé avec quatre directives | Le prompt de mission ne suffit pas à valider ce bonus |
++
++Cette remise est une étude de choix de synchronisation. Elle ne valide ni l'audit final, ni réseau/persistance, ni parallélisme. Les profils avant/après sont non applicables en l'absence de modification ; les profils actuels exigés pour le diagnostic sont fournis. Les départs remplis applicatifs ne sont pas mesurés, comme à l'étape 01. Tout résultat absent reste explicitement absent.
++""")
++    (root / "02-compteurs.md").write_text("".join(lines), encoding="utf-8")
++
++
++if __name__ == "__main__":
++    parser = argparse.ArgumentParser()
++    parser.add_argument("results", type=Path)
++    args = parser.parse_args()
++    analyze(args.results.resolve())
+diff --git a/scripts/opti02/deliver.py b/scripts/opti02/deliver.py
+new file mode 100644
+index 0000000..f0c8a9f
+--- /dev/null
++++ b/scripts/opti02/deliver.py
+@@ -0,0 +1,122 @@
++"""Publish the current counter study, package actual evidence, then verify extracted hashes/links."""
++import argparse
++import importlib.util
++import json
++from pathlib import Path
++import shutil
++import subprocess
++import tempfile
++import zipfile
++
++
++def copy(source, destination):
++    destination.parent.mkdir(parents=True, exist_ok=True)
++    shutil.copy2(source, destination)
++
++
++def main():
++    parser = argparse.ArgumentParser()
++    parser.add_argument("results", type=Path)
++    parser.add_argument("repo", type=Path)
++    parser.add_argument("archive", type=Path)
++    args = parser.parse_args()
++    root, repo, destination = args.results.resolve(), args.repo.resolve(), args.archive.resolve()
++    spec = importlib.util.spec_from_file_location("archive_helpers", repo / "scripts/opti01/package_audit.py")
++    helpers = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(helpers)
++    proof = repo / "docs/optimisations/02-compteurs"
++    proof.mkdir(parents=True, exist_ok=True)
++    for name in ("raw", "logs", "figures"):
++        shutil.copytree(root / name, proof / name, dirs_exist_ok=True)
++    for pattern in ("*.csv", "*.json", "*.jsonl", "*.txt"):
++        for path in root.glob(pattern):
++            copy(path, proof / path.name)
++    if (root / "incidents.md").exists():
++        copy(root / "incidents.md", proof / "incidents.md")
++    for path in (root / "profiles").glob("*.summary.json"):
++        copy(path, proof / "profiles" / path.name)
++    copy(root / "builds/baseline/build.json", proof / "build-baseline.json")
++    initial_log = root.parent / "tests-initial.log"
++    if initial_log.exists():
++        copy(initial_log, proof / "logs/tests-initial.log")
++    copy(root / "02-compteurs.md", repo / "docs/optimisations/02-compteurs.md")
++    (proof / "patches").mkdir(exist_ok=True)
++    diff = subprocess.check_output(["git", "diff", "180012f", "--", "src/main", "src/test"], cwd=repo)
++    if diff:
++        raise RuntimeError("Production/tests changed: re-audit the non-applicability conclusion")
++    (proof / "production-preservation.json").write_text(json.dumps(dict(
++        base="180012fc1c1cf883a0dca233806093440baa113c", productionDiff="", testsDiff="",
++        checkedCommand="git diff 180012f -- src/main src/test", candidate="none", productionUnchanged=True), indent=2), encoding="utf-8")
++    patch = subprocess.check_output(["git", "diff", "180012f", "--", "scripts/benchmark-opti-02.ps1", "scripts/opti02", "instructions/mission-opti-02.md"], cwd=repo)
++    (proof / "patches/etude.patch").write_bytes(patch)
++    (proof / "DICTIONNAIRE.md").write_text("""# Dictionnaire des observations
++
++Une action est exécutée pour un joueur actif ; une tentative est une pose essayée ; une modification est un changement direct ; les conversions sont les changements d'une passe simultanée. Leurs deltas et les éliminations sont dans workload-verification.csv. Les snapshots métier de chaque JSON sont cohérents sous le moniteur Simulation. Les rejeux comparent code identique, graines et ordre identiques ; ils ne sont pas des paires avant/après d'optimisation.
++
++`elapsedNanos` : durée murale du travail fixe Java, ou fenêtre externe du pilote applicatif. `activeElapsedNanos` : delta de temps actif exact pour l'application ; sa base définit les débits applicatifs. Unité des temps : nanoseconde. Débits : par seconde. CPU moteur : thread ; CPU processus : MXBean entre snapshots. Allocations/action : octets alloués, pas mémoire retenue. Pic heap échantillonné toutes les 10 ms ; il peut manquer des pics plus courts.
++
++P50/P95/P99 HTTP : durées client des GET périodiques réussis, rang ceil(p×n), réponses lues intégralement ; erreurs et requêtes sont préservées. Null signifie absence d'observation, notamment sans polling. Les requêtes de pilotage ne participent pas à ces percentiles. Les 4 GET d'un batch sont concurrents, départ demandé chaque seconde, fin du batch attendue avant le suivant.
++
++summary.csv regroupe séparément mode, taille, état initial, graine et condition HTTP : n, moyenne, médiane, écart type et variance d'échantillon (n−1), min/max. observations.csv préserve les valeurs non arrondies. Les modes calibration, replay et JFR sont exclus des statistiques principales. Aucune paire de variantes de production n'existe. Accélération temps = avant/après ; variation débit = 100×(après/avant−1) ; réduction temps = 100×(1−après/avant). Ces trois valeurs restent non applicables ici.
++
++JFR ExecutionSample : échantillons CPU exclusifs ou inclusifs et piles, pas durée exacte. ObjectAllocationSample : poids estimés des allocations. JavaMonitorEnter : événements de durée au moins 1 ms et somme par classe de moniteur, pas coût des atomiques, ni totalité des petites attentes. Durée GarbageCollection et pauses GCPhasePause distinctes. Les durées cumulées de plusieurs threads peuvent dépasser le temps mural.
++
++`source-inventory.json` inventorie les emplacements textuels et empreintes des sources de production réellement compilées ; l'analyse manuelle des accès reste nécessaire. `production-preservation.json` vérifie l'absence de changement de production et de tests depuis le départ. Chaque essai conserve référence, SHA du JAR et du banc/agent, graine, paramètres, ordre, compteurs et instrumentation. Le pic de heap du banc reste un AtomicLong car ses accès sont concurrents hors verrou Simulation.
++""", encoding="utf-8")
++    stage = Path(tempfile.mkdtemp(prefix="handoff-", dir=root.parent))
++    staged_proof = stage / "docs/optimisations/02-compteurs"
++    shutil.copytree(proof, staged_proof)
++    for path in (root / "profiles").glob("*.jfr"):
++        copy(path, staged_proof / "profiles" / path.name)
++    index = ["# Index des preuves\n", "Les JFR originaux sont inclus dans l'archive ; seuls leurs exports sont versionnés.\n"]
++    for path in sorted(staged_proof.rglob("*")):
++        if path.is_file() and path.name != "INDEX.md":
++            rel = path.relative_to(staged_proof).as_posix()
++            index.append(f"- [{rel}]({rel})\n")
++    for target in (proof / "INDEX.md", staged_proof / "INDEX.md"):
++        target.write_text("\n".join(index), encoding="utf-8")
++    copy(repo / "docs/optimisations/02-compteurs.md", stage / "docs/optimisations/02-compteurs.md")
++    copy(repo / "scripts/benchmark-opti-02.ps1", stage / "scripts/benchmark-opti-02.ps1")
++    for path in (repo / "scripts/opti02").glob("*"):
++        if path.is_file():
++            copy(path, stage / "scripts/opti02" / path.name)
++    copy(repo / "scripts/opti01/package_audit.py", stage / "scripts/opti01/package_audit.py")
++    copy(repo / "instructions/mission-opti-02.md", stage / "instructions/mission-opti-02.md")
++    copy(repo / "instructions/regles.md", stage / "instructions/regles.md")
++    source = root / "builds/baseline/source"
++    copy(source / "target/pixel-war-0.0.1-SNAPSHOT.jar", stage / "binaries/baseline.jar")
++    copy(source / "target/storage-agent.jar", stage / "binaries/storage-agent.jar")
++    for folder in ("src/main", "src/test", ".mvn"):
++        shutil.copytree(source / folder, stage / "source" / folder)
++    for name in ("pom.xml", "mvnw", "mvnw.cmd"):
++        copy(source / name, stage / "source" / name)
++    (stage / "LISEZ-MOI.md").write_text("""# Étude 02 — compteurs
++
++Lire le [rapport autonome](docs/optimisations/02-compteurs.md) et l'[index des preuves](docs/optimisations/02-compteurs/INDEX.md).
++
++Décision : piste non applicable ; compteurs déjà ordinaires et protégés, aucun changement de production. Les JFR, binaire/agent réellement mesurés, raw, scripts et sources main/test sont inclus. Le dépôt avec la référence du rapport reste nécessaire à la commande fondée sur git archive. Cette remise ne constitue pas l'audit final.
++
++MANIFEST-SHA256.json couvre tous les fichiers sauf lui-même ; VERIFICATION.json décrit le contrôle après extraction. Les JFR sont inclus ici, pas dans Git. Aucun dossier .git ni secret n'est inclus.
++""", encoding="utf-8")
++    destination.parent.mkdir(parents=True, exist_ok=True)
++    (stage / "VERIFICATION.json").write_text("{}", encoding="utf-8")
++    helpers.manifest(stage)
++    helpers.archive(stage, destination)
++    extracted = Path(tempfile.mkdtemp(prefix="verify-", dir=root.parent))
++    with zipfile.ZipFile(destination) as archive:
++        archive.extractall(extracted)
++    result = helpers.verify(extracted)
++    (stage / "VERIFICATION.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
++    helpers.manifest(stage)
++    helpers.archive(stage, destination)
++    final = Path(tempfile.mkdtemp(prefix="verify-final-", dir=root.parent))
++    with zipfile.ZipFile(destination) as archive:
++        archive.extractall(final)
++    assert helpers.verify(final) == result
++    digest = helpers.sha(destination)
++    destination.with_suffix(".zip.sha256").write_text(digest + "  " + destination.name + "\n", encoding="ascii")
++    print(json.dumps(dict(archive=str(destination), bytes=destination.stat().st_size, sha256=digest, verification=result), indent=2))
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/scripts/opti02/inventaire.md b/scripts/opti02/inventaire.md
+new file mode 100644
+index 0000000..b497d90
+--- /dev/null
++++ b/scripts/opti02/inventaire.md
+@@ -0,0 +1,27 @@
++## Inventaire des accès et décision
++
++Cet inventaire concerne les instances utilisées par le moteur de production, pas des appels arbitraires aux classes injectables. Les numéros de ligne exacts et SHA-256 des sources sont conservés dans `source-inventory.json`. Aucun compteur n'est modifié.
++
++| Compteur ou groupe | Type actuel | Écrivains et lecteurs | Protection réelle et cycle de vie | Exactitude requise | Décision |
++|---|---|---|---|---|---|
++| Simulation : `actions`, `attempts`, `modifications`, `emptyActions` et cinq tableaux par joueur | `long`, `long[4]` | `play`, `reset` ; `status`, `metrics`, `performance`, copies JSON | `play` entre dans `synchronized(this)` avant tout accès ; commandes et getters publics synchronisés sur la même Simulation ; tableaux privés non exportés | Totaux et attribution cohérents dans un même snapshot | Déjà primitifs, conserver |
++| Simulation : `conversionPasses`, `conversions`, `conversionsByPlayer` | `long`, `long[4]` | Une passe après les poses ; ajout par couleur bénéficiaire ; `metrics`, `reset` | Même moniteur Simulation, puis Board imbriqué pour la passe simultanée | Exact par bénéficiaire ; pas d'agrégation différée | Conserver |
++| Simulation : `latencyTotal/Min/Max`, `conversionTotal/Min/Max` | `long` | `play` et son `finally`, lecture `metrics`, remise à zéro | Même moniteur ; mise à jour de durée conservée même sur erreur ; moyenne calculée avec actions ou passes ; minimum exporté à zéro sans observation | Ensemble total/n/min/max cohérent | Conserver les horloges et les mises à jour existantes |
++| Simulation : `generation`, `accumulatedNs`, `runningSince`, `firstPlayer` | `long`, `int` | `activate`, `freeze`, `playRound`, `elapsedNs`, commandes | Helpers privés appelés sous Simulation ; création confinée avant publication ; annulation des tâches et génération invalident les rappels anciens | Cycle de vie exact, exclusion des mutations tardives | Protocole, pas atomiques redondants |
++| Simulation : `targetActions`, `workloadSeed`, `workloadCompleted`, `workloadFailure` | `Long`, booléen, String | `startTrial`, fin/erreur d'action, `performance`, reset | Moniteur Simulation ; le bloc catch conserve les mutations déjà effectuées et `finally` les durées | État d'essai cohérent avec compteurs | Conserver |
++| Simulation : `workloadCompletedAtNanos` | `volatile Long` | Fin d'essai/reset sous Simulation ; getter hors verrou lu par filtre HTTP | Publication volatile nécessaire vers les threads HTTP | Visibilité individuelle du marqueur | Conserver : pas un compteur à incrémenter |
++| Stock : consommation, crédits acceptés, crédits perdus | `BigInteger` | `consumeOne`, `refill`, `reset` ; getters appelés par `metrics` | Stock privé détenu par Simulation ; tous ses appels de production sont sous Simulation, sauf construction confinée | Cumul exact pouvant dépasser `long` ; consommation seulement si une cellule change | Conserver ; convertir en long réduirait la capacité |
++| Stock : disponibilité, dernière recharge | `int`, `long` | Recharge, consommation, reset, disponibilité ; `snapshot` | Même propriété d'utilisation ; Stock seul n'est pas une classe synchronisée | Capacité bornée et temps actif monotone | Conserver les types existants, hors candidat |
++| PerformanceTracker : CPU, allocations, attentes, derniers relevés, pic, temps de départ | `long`, booléens | `beginAction`, `tick`, `pause`, `snapshot`, `reset` | Instance privée finale de Simulation ; tous les accès après publication sont sous Simulation. Probe JVM partage des MXBeans, pas ces accumulateurs | Deltas cohérents ; valeurs non supportées nulles | Déjà primitifs ; ne pas prétendre à un confinement sur un seul thread (HTTP lit aussi) |
++| Filtre HTTP : `generation`, `blockedNanos`, support, fenêtres reads/commands | `long`, booléen, `long[512]` | `doFilterInternal`, `record`, `snapshot`, `reset`, `resetIncluding` | Moniteur propre au filtre ; epoch capturé sous ce moniteur puis vérifié au record ; reset rejette les requêtes de génération précédente ; attribut de requête traite la commande reset elle-même | Total exact des requêtes retenues, fenêtres bornées ; pas de cohérence atomique avec un snapshot Simulation distinct | Conserver ; ce moniteur n'est ni Simulation ni Board |
++| Board : scores `totals` | `EnumMap<CellState, Long>` | `place` pour pose et conversion, reset ; `counts`, `cellCount` | Moniteur Board ; counts retourne une copie ; pas de scan de scores ni atomiques | Comptages métier exacts, somme = surface | Conserver : boxing éventuel est une autre hypothèse, hors mission |
++| Board : `frontierUpdates`, `frontierMaintenanceNanos` | `long` | Pose modifiée, reset, `frontierMetrics` | Moniteur Board ; le temps inclut les cinq mises à jour locales et reste à sa place | Total et moyenne cohérents | Déjà primitifs |
++| Board : `emptyCount`, `candidateCount` ; FrontierIndex : `size` | `int` | Pose/reset, file des candidats, insertions/suppressions ; choix aléatoire/détection | Moniteur Board. Les helpers candidats sont package-private, appelés par NeighborConversion sous Board ; index non exposés. La capacité entière est liée à l'indexation du tableau | Invariants de structures, pas statistiques techniques | Hors changement ; ne pas les convertir ni changer l'ordre |
++| NeighborConversion : `received` | `EnumMap<CellState, Long>` local | Initialisation et addition dans `apply`, consommé par `Simulation.play` | Variable propre à l'appel, boucle sous Board ; résultat consommé sous Simulation | Conversion attribuée à la couleur bénéficiaire | Pas d'atomique à retirer |
++| FrontierPlacementStrategy : `remainingActions` des cibles | `int` dans Target ; carte synchronisée WeakHashMap | `beginAction`, choix, reset et interrogation | Synchronisation carte + protocoles Board existants ; état de stratégie, pas compteur technique global | Même cible et ordre RNG | Hors périmètre, conserver |
++
++Fréquence : deux compteurs d'action au début de chaque action exécutée ; deux compteurs de tentative à chaque pose essayée ; deux de modification si la cellule change ; compteurs de conversion après la passe, un ajout par bénéficiaire ; durée totale/min/max dans les points actuels. PerformanceTracker sonde aux transitions et environ toutes les 100 ms, pas à chaque pose. Board incrémente sa statistique une fois par mutation effective, après la maintenance locale. Le filtre enregistre une mesure par requête terminée retenue.
++
++Les accès de construction sont confinés avant publication. Pause/stop/close passent par `freeze` sous Simulation ; le moteur ne peut entrer simultanément et les générations anciennes sont rejetées au prochain rappel. Une erreur partielle ne remet pas les compteurs à zéro : les poses déjà réussies restent comptées. Reset remet les tableaux et scalaires, stocks, performance, stratégies et Board à zéro sous leurs protocoles actuels. Le contrôleur remet ensuite le filtre à zéro sous son propre moniteur : il ne faut pas exiger une transaction atomique entre deux objets ou deux réponses HTTP distinctes.
++
++Le seul `AtomicLong` du banc est son pic de heap : le sampler et le thread de pilotage y accèdent concurremment, hors du moniteur Simulation. Il n'est pas un compteur de production et sa protection n'est pas redondante. Les atomiques des tests servent notamment d'horloges injectées ; ils ne sont pas des candidats de cette mission.
+diff --git a/scripts/opti02/requirements.txt b/scripts/opti02/requirements.txt
+new file mode 100644
+index 0000000..015ccbd
+--- /dev/null
++++ b/scripts/opti02/requirements.txt
+@@ -0,0 +1,2 @@
++matplotlib==3.11.2
++numpy==2.5.4

@@ -31,6 +31,8 @@ def main():
     for pattern in ("*.csv", "*.json", "*.jsonl", "*.txt"):
         for path in root.glob(pattern):
             copy(path, proof / path.name)
+    if (root / "incidents.md").exists():
+        copy(root / "incidents.md", proof / "incidents.md")
     for path in (root / "profiles").glob("*.summary.json"):
         copy(path, proof / "profiles" / path.name)
     copy(root / "builds/baseline/build.json", proof / "build-baseline.json")

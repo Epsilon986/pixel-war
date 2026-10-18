@@ -1,0 +1,26 @@
+[
+  {
+    "size": 500,
+    "initial": "empty",
+    "repetitions": 5,
+    "identicalBusinessAndSpatialState": true
+  },
+  {
+    "size": 500,
+    "initial": "full",
+    "repetitions": 5,
+    "identicalBusinessAndSpatialState": true
+  },
+  {
+    "size": 4000,
+    "initial": "empty",
+    "repetitions": 5,
+    "identicalBusinessAndSpatialState": true
+  },
+  {
+    "size": 4000,
+    "initial": "full",
+    "repetitions": 5,
+    "identicalBusinessAndSpatialState": true
+  }
+]

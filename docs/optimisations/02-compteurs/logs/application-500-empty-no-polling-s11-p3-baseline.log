@@ -1,0 +1,27 @@
+23:47:43.363 [main] INFO org.pixelwar.pixelwar.domain.Simulation -- Board 500 x 500, actions every 10 ns, max 10 pixels/action, conversions true
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::                (v4.1.1)
+
+2026-10-18T23:47:43.722+02:00  INFO 34364 --- [opti-02] [           main] o.p.pixelwar.domain.CounterExperiment    : Starting CounterExperiment using Java 27 with PID 34364 (C:\Users\gui35\ideaProjects\pixel-war\target\opti-02\results\builds\baseline\source\target\experiment-classes started by gui35 in C:\Users\gui35\ideaProjects\pixel-war\target\opti-02\results\builds\baseline\source)
+2026-10-18T23:47:43.724+02:00  INFO 34364 --- [opti-02] [           main] o.p.pixelwar.domain.CounterExperiment    : No active profile set, falling back to 1 default profile: "default"
+2026-10-18T23:47:44.316+02:00  INFO 34364 --- [opti-02] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 60558 (http)
+2026-10-18T23:47:44.324+02:00  INFO 34364 --- [opti-02] [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-18T23:47:44.325+02:00  INFO 34364 --- [opti-02] [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-18T23:47:44.356+02:00  INFO 34364 --- [opti-02] [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 607 ms
+2026-10-18T23:47:44.418+02:00  INFO 34364 --- [opti-02] [           main] o.s.b.w.a.WelcomePageHandlerMapping      : Adding welcome page: class path resource [static/index.html]
+2026-10-18T23:47:44.582+02:00  INFO 34364 --- [opti-02] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 60558 (http) with context path '/'
+2026-10-18T23:47:44.586+02:00  INFO 34364 --- [opti-02] [           main] o.p.pixelwar.domain.CounterExperiment    : Started CounterExperiment in 1.129 seconds (process running for 1.376)
+2026-10-18T23:47:44.986+02:00  INFO 34364 --- [opti-02] [io-60558-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-10-18T23:47:44.987+02:00  INFO 34364 --- [opti-02] [io-60558-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2026-10-18T23:47:44.988+02:00  INFO 34364 --- [opti-02] [io-60558-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 1 ms
+2026-10-18T23:47:45.017+02:00  INFO 34364 --- [opti-02] [io-60558-exec-1] o.pixelwar.pixelwar.domain.Simulation    : Simulation started
+2026-10-18T23:47:50.116+02:00  INFO 34364 --- [opti-02] [io-60558-exec-2] o.pixelwar.pixelwar.domain.Simulation    : Simulation paused
+2026-10-18T23:47:50.568+02:00  INFO 34364 --- [opti-02] [io-60558-exec-4] o.pixelwar.pixelwar.domain.Simulation    : Simulation resumed
+2026-10-18T23:48:10.577+02:00  INFO 34364 --- [opti-02] [io-60558-exec-5] o.pixelwar.pixelwar.domain.Simulation    : Simulation paused

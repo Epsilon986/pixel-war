@@ -1,0 +1,13 @@
+# Dictionnaire des observations
+
+Une action est exécutée pour un joueur actif ; une tentative est une pose essayée ; une modification est un changement direct ; les conversions sont les changements d'une passe simultanée. Leurs deltas et les éliminations sont dans workload-verification.csv. Les snapshots métier de chaque JSON sont cohérents sous le moniteur Simulation. Les rejeux comparent code identique, graines et ordre identiques ; ils ne sont pas des paires avant/après d'optimisation.
+
+`elapsedNanos` : durée murale du travail fixe Java, ou fenêtre externe du pilote applicatif. `activeElapsedNanos` : delta de temps actif exact pour l'application ; sa base définit les débits applicatifs. Unité des temps : nanoseconde. Débits : par seconde. CPU moteur : thread ; CPU processus : MXBean entre snapshots. Allocations/action : octets alloués, pas mémoire retenue. Pic heap échantillonné toutes les 10 ms ; il peut manquer des pics plus courts.
+
+P50/P95/P99 HTTP : durées client des GET périodiques réussis, rang ceil(p×n), réponses lues intégralement ; erreurs et requêtes sont préservées. Null signifie absence d'observation, notamment sans polling. Les requêtes de pilotage ne participent pas à ces percentiles. Les 4 GET d'un batch sont concurrents, départ demandé chaque seconde, fin du batch attendue avant le suivant.
+
+summary.csv regroupe séparément mode, taille, état initial, graine et condition HTTP : n, moyenne, médiane, écart type et variance d'échantillon (n−1), min/max. observations.csv préserve les valeurs non arrondies. Les modes calibration, replay et JFR sont exclus des statistiques principales. Aucune paire de variantes de production n'existe. Accélération temps = avant/après ; variation débit = 100×(après/avant−1) ; réduction temps = 100×(1−après/avant). Ces trois valeurs restent non applicables ici.
+
+JFR ExecutionSample : échantillons CPU exclusifs ou inclusifs et piles, pas durée exacte. ObjectAllocationSample : poids estimés des allocations. JavaMonitorEnter : événements de durée au moins 1 ms et somme par classe de moniteur, pas coût des atomiques, ni totalité des petites attentes. Durée GarbageCollection et pauses GCPhasePause distinctes. Les durées cumulées de plusieurs threads peuvent dépasser le temps mural.
+
+`source-inventory.json` inventorie les emplacements textuels et empreintes des sources de production réellement compilées ; l'analyse manuelle des accès reste nécessaire. `production-preservation.json` vérifie l'absence de changement de production et de tests depuis le départ. Chaque essai conserve référence, SHA du JAR et du banc/agent, graine, paramètres, ordre, compteurs et instrumentation. Le pic de heap du banc reste un AtomicLong car ses accès sont concurrents hors verrou Simulation.

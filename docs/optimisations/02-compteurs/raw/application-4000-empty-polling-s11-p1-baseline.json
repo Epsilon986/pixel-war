@@ -1,0 +1,771 @@
+﻿{
+    "mode":  "application",
+    "polling":  "polling",
+    "activeElapsedNanos":  20039974300,
+    "size":  4000,
+    "initial":  "empty",
+    "seed":  11,
+    "serverPort":  63844,
+    "requestedSeconds":  20,
+    "warmupSeconds":  5,
+    "elapsedNanos":  20044360200,
+    "executedActions":  707552,
+    "before":  {
+                   "business":  {
+                                    "actions":  187056,
+                                    "attempts":  1870560,
+                                    "modifications":  1870560,
+                                    "conversions":  34702,
+                                    "conversionPasses":  187056,
+                                    "boardChanges":  1905262,
+                                    "counts":  {
+                                                   "EMPTY":  14454139,
+                                                   "RED":  421293,
+                                                   "BLUE":  365198,
+                                                   "GREEN":  339038,
+                                                   "YELLOW":  420332
+                                               },
+                                    "frontierSizes":  {
+                                                          "GREEN":  360246,
+                                                          "RED":  392206,
+                                                          "BLUE":  370380,
+                                                          "YELLOW":  387316
+                                                      },
+                                    "players":  [
+                                                    {
+                                                        "color":  "RED",
+                                                        "stock":  100,
+                                                        "eliminated":  false,
+                                                        "attempts":  467640,
+                                                        "modifications":  467640,
+                                                        "actions":  46764,
+                                                        "actionsWithoutStock":  0,
+                                                        "pixelsConsumed":  "0",
+                                                        "pixelsRefilled":  "0",
+                                                        "pixelsDiscarded":  "0",
+                                                        "conversionsReceived":  6216,
+                                                        "priorityTarget":  "GREEN"
+                                                    },
+                                                    {
+                                                        "color":  "BLUE",
+                                                        "stock":  100,
+                                                        "eliminated":  false,
+                                                        "attempts":  467640,
+                                                        "modifications":  467640,
+                                                        "actions":  46764,
+                                                        "actionsWithoutStock":  0,
+                                                        "pixelsConsumed":  "0",
+                                                        "pixelsRefilled":  "0",
+                                                        "pixelsDiscarded":  "0",
+                                                        "conversionsReceived":  10223,
+                                                        "priorityTarget":  "GREEN"
+                                                    },
+                                                    {
+                                                        "color":  "GREEN",
+                                                        "stock":  100,
+                                                        "eliminated":  false,
+                                                        "attempts":  467640,
+                                                        "modifications":  467640,
+                                                        "actions":  46764,
+                                                        "actionsWithoutStock":  0,
+                                                        "pixelsConsumed":  "0",
+                                                        "pixelsRefilled":  "0",
+                                                        "pixelsDiscarded":  "0",
+                                                        "conversionsReceived":  11559,
+                                                        "priorityTarget":  "BLUE"
+                                                    },
+                                                    {
+                                                        "color":  "YELLOW",
+                                                        "stock":  100,
+                                                        "eliminated":  false,
+                                                        "attempts":  467640,
+                                                        "modifications":  467640,
+                                                        "actions":  46764,
+                                                        "actionsWithoutStock":  0,
+                                                        "pixelsConsumed":  "0",
+                                                        "pixelsRefilled":  "0",
+                                                        "pixelsDiscarded":  "0",
+                                                        "conversionsReceived":  6704,
+                                                        "priorityTarget":  "GREEN"
+                                                    }
+                                                ]
+                                },
+                   "elapsedMs":  5063,
+                   "activeElapsedNanos":  5061995500,
+                   "engineBlockedNanos":  0,
+                   "failure":  null,
+                   "cpuNanos":  4937500000,
+                   "engineAllocatedBytes":  658974048,
+                   "processCpuNanos":  12203125000,
+                   "peakObservedHeapBytes":  788398976,
+                   "colorsLayout":  {
+                                        "type":  "byte[]",
+                                        "arrays":  1,
+                                        "totalArrayBytes":  16000016,
+                                        "cells":  16000000,
+                                        "measurement":  "Instrumentation.getObjectSize; color arrays only; shared enum instances excluded"
+                                    },
+                   "runtime":  {
+                                   "javaVersion":  "27+35-2325",
+                                   "vm":  "OpenJDK 64-Bit Server VM",
+                                   "flags":  [
+                                                 "-Xms2g",
+                                                 "-Xmx2g",
+                                                 "-XX:+UseG1GC",
+                                                 "-javaagent:C:\\Users\\gui35\\ideaProjects\\pixel-war\\target\\opti-02\\results\\builds\\baseline\\source\\target\\storage-agent.jar"
+                                             ],
+                                   "os":  "Windows 11",
+                                   "gc":  [
+                                              "G1 Young Generation",
+                                              "G1 Concurrent GC",
+                                              "G1 Old Generation"
+                                          ],
+                                   "maxHeapBytes":  2147483648,
+                                   "processors":  20,
+                                   "compressedOops":  "true",
+                                   "objectAlignment":  "8"
+                               }
+               },
+    "after":  {
+                  "business":  {
+                                   "actions":  894608,
+                                   "attempts":  8946080,
+                                   "modifications":  8946080,
+                                   "conversions":  331751,
+                                   "conversionPasses":  894608,
+                                   "boardChanges":  9277831,
+                                   "counts":  {
+                                                  "EMPTY":  10881356,
+                                                  "RED":  1673178,
+                                                  "BLUE":  969194,
+                                                  "GREEN":  799870,
+                                                  "YELLOW":  1676402
+                                              },
+                                   "frontierSizes":  {
+                                                         "GREEN":  1071531,
+                                                         "RED":  1487240,
+                                                         "BLUE":  1150576,
+                                                         "YELLOW":  1483794
+                                                     },
+                                   "players":  [
+                                                   {
+                                                       "color":  "RED",
+                                                       "stock":  100,
+                                                       "eliminated":  false,
+                                                       "attempts":  2236520,
+                                                       "modifications":  2236520,
+                                                       "actions":  223652,
+                                                       "actionsWithoutStock":  0,
+                                                       "pixelsConsumed":  "0",
+                                                       "pixelsRefilled":  "0",
+                                                       "pixelsDiscarded":  "0",
+                                                       "conversionsReceived":  68923,
+                                                       "priorityTarget":  "GREEN"
+                                                   },
+                                                   {
+                                                       "color":  "BLUE",
+                                                       "stock":  100,
+                                                       "eliminated":  false,
+                                                       "attempts":  2236520,
+                                                       "modifications":  2236520,
+                                                       "actions":  223652,
+                                                       "actionsWithoutStock":  0,
+                                                       "pixelsConsumed":  "0",
+                                                       "pixelsRefilled":  "0",
+                                                       "pixelsDiscarded":  "0",
+                                                       "conversionsReceived":  96870,
+                                                       "priorityTarget":  "GREEN"
+                                                   },
+                                                   {
+                                                       "color":  "GREEN",
+                                                       "stock":  100,
+                                                       "eliminated":  false,
+                                                       "attempts":  2236520,
+                                                       "modifications":  2236520,
+                                                       "actions":  223652,
+                                                       "actionsWithoutStock":  0,
+                                                       "pixelsConsumed":  "0",
+                                                       "pixelsRefilled":  "0",
+                                                       "pixelsDiscarded":  "0",
+                                                       "conversionsReceived":  97294,
+                                                       "priorityTarget":  "BLUE"
+                                                   },
+                                                   {
+                                                       "color":  "YELLOW",
+                                                       "stock":  100,
+                                                       "eliminated":  false,
+                                                       "attempts":  2236520,
+                                                       "modifications":  2236520,
+                                                       "actions":  223652,
+                                                       "actionsWithoutStock":  0,
+                                                       "pixelsConsumed":  "0",
+                                                       "pixelsRefilled":  "0",
+                                                       "pixelsDiscarded":  "0",
+                                                       "conversionsReceived":  68664,
+                                                       "priorityTarget":  "GREEN"
+                                                   }
+                                               ]
+                               },
+                  "elapsedMs":  25103,
+                  "activeElapsedNanos":  25101969800,
+                  "engineBlockedNanos":  24000000,
+                  "failure":  null,
+                  "cpuNanos":  24640625000,
+                  "engineAllocatedBytes":  2337995912,
+                  "processCpuNanos":  32937500000,
+                  "peakObservedHeapBytes":  1364116400,
+                  "colorsLayout":  {
+                                       "type":  "byte[]",
+                                       "arrays":  1,
+                                       "totalArrayBytes":  16000016,
+                                       "cells":  16000000,
+                                       "measurement":  "Instrumentation.getObjectSize; color arrays only; shared enum instances excluded"
+                                   },
+                  "runtime":  {
+                                  "javaVersion":  "27+35-2325",
+                                  "vm":  "OpenJDK 64-Bit Server VM",
+                                  "flags":  [
+                                                "-Xms2g",
+                                                "-Xmx2g",
+                                                "-XX:+UseG1GC",
+                                                "-javaagent:C:\\Users\\gui35\\ideaProjects\\pixel-war\\target\\opti-02\\results\\builds\\baseline\\source\\target\\storage-agent.jar"
+                                            ],
+                                  "os":  "Windows 11",
+                                  "gc":  [
+                                             "G1 Young Generation",
+                                             "G1 Concurrent GC",
+                                             "G1 Old Generation"
+                                         ],
+                                  "maxHeapBytes":  2147483648,
+                                  "processors":  20,
+                                  "compressedOops":  "true",
+                                  "objectAlignment":  "8"
+                              }
+              },
+    "cpuNanos":  19703125000,
+    "processCpuNanos":  20734375000,
+    "allocatedBytesPerAction":  2373.001368097327,
+    "peakObservedHeapBytes":  1364116400,
+    "heapSamplePeriodMillis":  10,
+    "attemptsPerSecond":  353070.31306921388,
+    "modificationsPerSecond":  353070.31306921388,
+    "httpP50Nanos":  23936800,
+    "httpP95Nanos":  96411100,
+    "httpP99Nanos":  111230100,
+    "httpSamples":  80,
+    "errors":  [
+
+               ],
+    "requests":  [
+                     {
+                         "Path":  "/api/simulation",
+                         "Status":  200,
+                         "ElapsedNanos":  11653200,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation/scores",
+                         "Status":  200,
+                         "ElapsedNanos":  15538100,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/performance",
+                         "Status":  200,
+                         "ElapsedNanos":  14346300,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/board/preview",
+                         "Status":  200,
+                         "ElapsedNanos":  43307300,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation",
+                         "Status":  200,
+                         "ElapsedNanos":  6931900,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation/scores",
+                         "Status":  200,
+                         "ElapsedNanos":  6520500,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/performance",
+                         "Status":  200,
+                         "ElapsedNanos":  7509800,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/board/preview",
+                         "Status":  200,
+                         "ElapsedNanos":  26788200,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation",
+                         "Status":  200,
+                         "ElapsedNanos":  7417200,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation/scores",
+                         "Status":  200,
+                         "ElapsedNanos":  7622900,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/performance",
+                         "Status":  200,
+                         "ElapsedNanos":  7353400,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/board/preview",
+                         "Status":  200,
+                         "ElapsedNanos":  34392200,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation",
+                         "Status":  200,
+                         "ElapsedNanos":  96534400,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation/scores",
+                         "Status":  200,
+                         "ElapsedNanos":  96411100,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/performance",
+                         "Status":  200,
+                         "ElapsedNanos":  96396800,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/board/preview",
+                         "Status":  200,
+                         "ElapsedNanos":  111230100,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation",
+                         "Status":  200,
+                         "ElapsedNanos":  12802500,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation/scores",
+                         "Status":  200,
+                         "ElapsedNanos":  12989900,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/performance",
+                         "Status":  200,
+                         "ElapsedNanos":  12740800,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/board/preview",
+                         "Status":  200,
+                         "ElapsedNanos":  20908600,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation",
+                         "Status":  200,
+                         "ElapsedNanos":  24032800,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation/scores",
+                         "Status":  200,
+                         "ElapsedNanos":  23949200,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/performance",
+                         "Status":  200,
+                         "ElapsedNanos":  23936800,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/board/preview",
+                         "Status":  200,
+                         "ElapsedNanos":  41085800,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation",
+                         "Status":  200,
+                         "ElapsedNanos":  16586700,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation/scores",
+                         "Status":  200,
+                         "ElapsedNanos":  17248800,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/performance",
+                         "Status":  200,
+                         "ElapsedNanos":  16516700,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/board/preview",
+                         "Status":  200,
+                         "ElapsedNanos":  31205700,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation",
+                         "Status":  200,
+                         "ElapsedNanos":  3574500,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation/scores",
+                         "Status":  200,
+                         "ElapsedNanos":  3469300,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/performance",
+                         "Status":  200,
+                         "ElapsedNanos":  3474200,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/board/preview",
+                         "Status":  200,
+                         "ElapsedNanos":  19116000,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation",
+                         "Status":  200,
+                         "ElapsedNanos":  26792900,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation/scores",
+                         "Status":  200,
+                         "ElapsedNanos":  26734900,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/performance",
+                         "Status":  200,
+                         "ElapsedNanos":  26618200,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/board/preview",
+                         "Status":  200,
+                         "ElapsedNanos":  44904300,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation",
+                         "Status":  200,
+                         "ElapsedNanos":  6909100,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation/scores",
+                         "Status":  200,
+                         "ElapsedNanos":  6976400,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/performance",
+                         "Status":  200,
+                         "ElapsedNanos":  6881600,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/board/preview",
+                         "Status":  200,
+                         "ElapsedNanos":  15291500,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation",
+                         "Status":  200,
+                         "ElapsedNanos":  66503400,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation/scores",
+                         "Status":  200,
+                         "ElapsedNanos":  66305100,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/performance",
+                         "Status":  200,
+                         "ElapsedNanos":  66566900,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/board/preview",
+                         "Status":  200,
+                         "ElapsedNanos":  85581600,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation",
+                         "Status":  200,
+                         "ElapsedNanos":  17620500,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation/scores",
+                         "Status":  200,
+                         "ElapsedNanos":  17566000,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/performance",
+                         "Status":  200,
+                         "ElapsedNanos":  17759200,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/board/preview",
+                         "Status":  200,
+                         "ElapsedNanos":  41919700,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation",
+                         "Status":  200,
+                         "ElapsedNanos":  32894900,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation/scores",
+                         "Status":  200,
+                         "ElapsedNanos":  32549900,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/performance",
+                         "Status":  200,
+                         "ElapsedNanos":  32805300,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/board/preview",
+                         "Status":  200,
+                         "ElapsedNanos":  47365900,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation",
+                         "Status":  200,
+                         "ElapsedNanos":  1747000,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation/scores",
+                         "Status":  200,
+                         "ElapsedNanos":  11744600,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/performance",
+                         "Status":  200,
+                         "ElapsedNanos":  11571700,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/board/preview",
+                         "Status":  200,
+                         "ElapsedNanos":  41030900,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation",
+                         "Status":  200,
+                         "ElapsedNanos":  45000300,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation/scores",
+                         "Status":  200,
+                         "ElapsedNanos":  44789200,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/performance",
+                         "Status":  200,
+                         "ElapsedNanos":  44402400,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/board/preview",
+                         "Status":  200,
+                         "ElapsedNanos":  66532900,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation",
+                         "Status":  200,
+                         "ElapsedNanos":  17074200,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation/scores",
+                         "Status":  200,
+                         "ElapsedNanos":  17042100,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/performance",
+                         "Status":  200,
+                         "ElapsedNanos":  17086100,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/board/preview",
+                         "Status":  200,
+                         "ElapsedNanos":  33223500,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation",
+                         "Status":  200,
+                         "ElapsedNanos":  87055500,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation/scores",
+                         "Status":  200,
+                         "ElapsedNanos":  86256300,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/performance",
+                         "Status":  200,
+                         "ElapsedNanos":  86226300,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/board/preview",
+                         "Status":  200,
+                         "ElapsedNanos":  101815900,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation",
+                         "Status":  200,
+                         "ElapsedNanos":  16236700,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation/scores",
+                         "Status":  200,
+                         "ElapsedNanos":  16194900,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/performance",
+                         "Status":  200,
+                         "ElapsedNanos":  15831200,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/board/preview",
+                         "Status":  200,
+                         "ElapsedNanos":  33073100,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation",
+                         "Status":  200,
+                         "ElapsedNanos":  23464500,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation/scores",
+                         "Status":  200,
+                         "ElapsedNanos":  15438800,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/performance",
+                         "Status":  200,
+                         "ElapsedNanos":  23845700,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/board/preview",
+                         "Status":  200,
+                         "ElapsedNanos":  37360200,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation",
+                         "Status":  200,
+                         "ElapsedNanos":  86691300,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation/scores",
+                         "Status":  200,
+                         "ElapsedNanos":  86645900,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/performance",
+                         "Status":  200,
+                         "ElapsedNanos":  86628100,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/board/preview",
+                         "Status":  200,
+                         "ElapsedNanos":  97312300,
+                         "Error":  null
+                     }
+                 ],
+    "instrumentation":  "no JFR",
+    "colorsLayout":  {
+                         "type":  "byte[]",
+                         "arrays":  1,
+                         "totalArrayBytes":  16000016,
+                         "cells":  16000000,
+                         "measurement":  "Instrumentation.getObjectSize; color arrays only; shared enum instances excluded"
+                     },
+    "version":  "baseline",
+    "commit":  "c5a8777bcd9e967ca23ea451a06489b76a3e8ad6",
+    "runId":  "application-4000-empty-polling-s11-p1-baseline",
+    "pairOrder":  1,
+    "binarySha256":  "4604BA9AAB3ABA2136C3960E561FB1AB1F0DBCE264847348960612CCC19168D6",
+    "harnessSha256":  "3E97239D2AE4B395577F31DC33BC7C0317009A09E63857869DE377251B5FFA2C",
+    "configuration":  {
+                          "width":  4000,
+                          "height":  4000,
+                          "intervalNs":  10,
+                          "maxPixelsPerAction":  10,
+                          "strategy":  "frontier",
+                          "explorationProbability":  0.1,
+                          "frontierSampleSize":  10,
+                          "weakOpponentBonus":  8,
+                          "targetHoldActions":  20,
+                          "stockEnabled":  false,
+                          "conversionEnabled":  true,
+                          "previewWidth":  500,
+                          "previewHeight":  500
+                      },
+    "completedUtc":  "2026-10-18T21:49:33.2580328Z"
+}

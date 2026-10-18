@@ -22,6 +22,7 @@ foreach ($dir in @('raw','logs','profiles','builds')) { New-Item -ItemType Direc
 $environment = [ordered]@{StartedUtc=[DateTime]::UtcNow.ToString('o'); Reference=$Reference; Study='baseline only: no redundant production atomics'; Java=$javaPath; Flags=$flags; EngineRepetitions=$EngineRepetitions; ApplicationRepetitions=$ApplicationRepetitions; ApplicationSeconds=$ApplicationSeconds; ApplicationWarmupSeconds=$ApplicationWarmupSeconds; EngineWarmupSeconds=3; HeapSamplePeriodMs=10; PerformanceSeed=11; ReplaySeeds=@(11,22,33); PollEndpoints=@('/api/simulation','/api/simulation/scores','/api/performance','/api/board/preview'); PollPeriodMs=1000; PreviewWidth=500; PreviewHeight=500; Cpu=(Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores,NumberOfLogicalProcessors,L2CacheSize,L3CacheSize); Computer=(Get-CimInstance Win32_ComputerSystem | Select-Object TotalPhysicalMemory); Os=(Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,OSArchitecture)}
 $environment | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $results 'environment.json')
 $environment | ConvertTo-Json -Depth 8 -Compress | Add-Content -Encoding UTF8 -LiteralPath (Join-Path $results 'invocations.jsonl')
+$PSVersionTable | Out-String | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $results 'powershell-version.txt')
 $savedErrorPreference = $ErrorActionPreference
 $ErrorActionPreference = 'Continue' # java -version intentionally writes its version to stderr on Windows PowerShell.
 & $javaPath -version 2> (Join-Path $results 'java-version.txt')
@@ -54,6 +55,7 @@ function Prepare-Version([string]$Label, [string]$Reference) {
             if ($LASTEXITCODE -ne 0) { throw 'Source extraction failed.' }
             Push-Location -LiteralPath $source
             try {
+                Invoke-LoggedNative './mvnw.cmd' @('--version') (Join-Path $results 'maven-version.txt')
                 Invoke-LoggedNative './mvnw.cmd' @('-B','-ntp','verify','dependency:build-classpath','-Dmdep.outputFile=target/experiment-classpath.txt') (Join-Path $results "logs/build-$Label.log")
                 $cp = 'target/classes;' + (Get-Content target/experiment-classpath.txt -Raw).Trim()
                 New-Item -ItemType Directory -Force -Path target/experiment-classes | Out-Null

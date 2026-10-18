@@ -1,0 +1,486 @@
+{
+  "atomicMatchesInProduction": [],
+  "sources": {
+    "src/main/java/org/pixelwar/pixelwar/domain/Board.java": "fc75ead213e33fdcdc3d1ffac7b0ba79dbd6090ed8c3cc34eed631128b4ed67c",
+    "src/main/java/org/pixelwar/pixelwar/domain/CellState.java": "fdf7ccbc320e0a5cc3bd5735ff1210789c0f9f9ae1c2e70ec0b4f08ee031e1f9",
+    "src/main/java/org/pixelwar/pixelwar/domain/FrontierIndex.java": "2364703e6b169e537079e53f149f0520898fe44fc7dce905d513b0a86b2dcf7b",
+    "src/main/java/org/pixelwar/pixelwar/domain/FrontierPlacementStrategy.java": "bff95a44e8eeb45d3d5d433a7efa1b10d9f079a08eb1a812286b2e930e50530d",
+    "src/main/java/org/pixelwar/pixelwar/domain/NeighborConversion.java": "1b68e68e08b9dad51468d5b450caea1009b111a277295dd5576f4998f9d1d759",
+    "src/main/java/org/pixelwar/pixelwar/domain/PerformanceTracker.java": "f43cc77595dcf78617613c55fb70e5d9f8a0c44e4180ec409bde0271aba91763",
+    "src/main/java/org/pixelwar/pixelwar/domain/PlacementStrategy.java": "1abda47a8822dcab04bcca33f0a0c07bcf94f0b4c2b99ebbb08a7a570e910283",
+    "src/main/java/org/pixelwar/pixelwar/domain/PositionStrategy.java": "f9be44255eb7affc3bd65d54d4b947080a7aab5b663333b49761ae95b117a24e",
+    "src/main/java/org/pixelwar/pixelwar/domain/RandomPlacementStrategy.java": "db17de7a1f442f655c246b4be01c2f25f7ecd3cf2ff99801f46855e284330e67",
+    "src/main/java/org/pixelwar/pixelwar/domain/Simulation.java": "04125aa4f0fab8b393767a12813d1803c2522a063819a89ce87b7e9f4abe04f6",
+    "src/main/java/org/pixelwar/pixelwar/domain/Stock.java": "1af05d279bcb58f9d714e9db1d20915bb12670268a4efc2b315c5a54f277a2ff",
+    "src/main/java/org/pixelwar/pixelwar/HealthController.java": "5c7c6709c22914c40787805a8ecc84c3a2bda79755cd3a31c6bb8a2770847078",
+    "src/main/java/org/pixelwar/pixelwar/HttpPerformanceFilter.java": "6903599fdf965c4bf993c225543749c819b683434fa2e9d48bc6609c71074c58",
+    "src/main/java/org/pixelwar/pixelwar/PixelWarApplication.java": "74e78cd928b6999bb49a4152e6d7b32fef9ed19c5e767597063f647b533f197c",
+    "src/main/java/org/pixelwar/pixelwar/PixelWarConfiguration.java": "3eef970a99525e7169dd08830502464a4e8c250f9db7ff4f8c2c7b550d2a6506",
+    "src/main/java/org/pixelwar/pixelwar/SimulationController.java": "972be51578cfde7f61ab612de62faa86b9e245917d1b4201fb710180c1e0d932",
+    "src/main/resources/application-extreme.properties": "8d214261d95b7e5982ca7c37d536a82c178a1be42fab40992f7f8c48347df423",
+    "src/main/resources/application-small.properties": "9ca1f50bee9b55ad8a15ac99d75dc76b84faacfd17b2057d429820d0d174c569",
+    "src/main/resources/application-stress.properties": "b865b741eb9cdf093e4e24de56a34ca8d8e62c6c397480662fadcdab487fd6bc",
+    "src/main/resources/application.properties": "e41986f0a64550a54a0d226458b9ca7cac0630bb0e36cb42aa8d1ccf26f40ce7",
+    "src/main/resources/static/app.js": "0479d0c65a6d70bc0a8f7659bdd99dd19e22662cb72b7933efbef4ce615c2e3c",
+    "src/main/resources/static/index.html": "3181b2d8d91192ffe028df51fae11976ee4a171519f01bb9fcea59ae6bb2a7df",
+    "src/main/resources/static/style.css": "1e41572e5864f894bac94084eea869b2dc9cd78638fa678a9f12b964a5f55ac9"
+  },
+  "accessLocations": [
+    {
+      "file": "src/main/java/org/pixelwar/pixelwar/domain/Board.java",
+      "matches": [
+        {
+          "line": 15,
+          "text": "private final int width;"
+        },
+        {
+          "line": 16,
+          "text": "private final int height;"
+        },
+        {
+          "line": 18,
+          "text": "private final int[] emptyCells, emptySlots;"
+        },
+        {
+          "line": 19,
+          "text": "private int emptyCount;"
+        },
+        {
+          "line": 20,
+          "text": "private final long[] conversionCandidates;"
+        },
+        {
+          "line": 21,
+          "text": "private int[] candidateIds = new int[16];"
+        },
+        {
+          "line": 22,
+          "text": "private int candidateCount;"
+        },
+        {
+          "line": 24,
+          "text": "private long frontierUpdates, frontierMaintenanceNanos;"
+        },
+        {
+          "line": 40,
+          "text": "reset();"
+        },
+        {
+          "line": 47,
+          "text": "public synchronized CellState get(int x, int y) {"
+        },
+        {
+          "line": 52,
+          "text": "public synchronized boolean place(int x, int y, CellState color) {"
+        },
+        {
+          "line": 101,
+          "text": "private void updateFrontiers(int x, int y) {"
+        },
+        {
+          "line": 119,
+          "text": "public synchronized int frontierSize(CellState color) { return frontier(color).size(); }"
+        },
+        {
+          "line": 120,
+          "text": "public synchronized boolean isFrontier(int x, int y, CellState color) {"
+        },
+        {
+          "line": 124,
+          "text": "public synchronized PlacementStrategy.Position randomFrontierPosition(CellState color, RandomGenerator random) {"
+        },
+        {
+          "line": 130,
+          "text": "public synchronized FrontierMetrics frontierMetrics() {"
+        },
+        {
+          "line": 142,
+          "text": "private void markConversionCandidate(int x, int y) {"
+        },
+        {
+          "line": 167,
+          "text": "public synchronized void reset() {"
+        },
+        {
+          "line": 169,
+          "text": "for (var frontier : frontiers) frontier.reset();"
+        },
+        {
+          "line": 178,
+          "text": "public synchronized PositionStrategy.Position randomEmptyPosition() {"
+        },
+        {
+          "line": 181,
+          "text": "public synchronized PlacementStrategy.Position randomEmptyPosition(RandomGenerator random) {"
+        },
+        {
+          "line": 187,
+          "text": "public synchronized boolean placeIfEmpty(int x, int y, CellState color) {"
+        },
+        {
+          "line": 195,
+          "text": "public synchronized boolean placeForPlayer(int x, int y, CellState color) {"
+        },
+        {
+          "line": 203,
+          "text": "public synchronized Map<CellState, Long> counts() {"
+        },
+        {
+          "line": 206,
+          "text": "public synchronized long cellCount(CellState color) { return totals.get(Objects.requireNonNull(color)); }"
+        },
+        {
+          "line": 208,
+          "text": "public synchronized CellState[][] preview(int requestedWidth, int requestedHeight) {"
+        },
+        {
+          "line": 221,
+          "text": "private void check(int x, int y) {"
+        }
+      ]
+    },
+    {
+      "file": "src/main/java/org/pixelwar/pixelwar/domain/CellState.java",
+      "matches": []
+    },
+    {
+      "file": "src/main/java/org/pixelwar/pixelwar/domain/FrontierIndex.java",
+      "matches": [
+        {
+          "line": 8,
+          "text": "private static final int PAGE_SHIFT = 12, PAGE_SIZE = 1 << PAGE_SHIFT;"
+        },
+        {
+          "line": 9,
+          "text": "private final int[][] slots;"
+        },
+        {
+          "line": 10,
+          "text": "private final int capacity;"
+        },
+        {
+          "line": 11,
+          "text": "private int[] ids = new int[16];"
+        },
+        {
+          "line": 12,
+          "text": "private int size;"
+        },
+        {
+          "line": 41,
+          "text": "void reset() {"
+        }
+      ]
+    },
+    {
+      "file": "src/main/java/org/pixelwar/pixelwar/domain/FrontierPlacementStrategy.java",
+      "matches": [
+        {
+          "line": 12,
+          "text": "private final int sampleSize;"
+        },
+        {
+          "line": 13,
+          "text": "private final int weakOpponentBonus, targetHoldActions;"
+        },
+        {
+          "line": 14,
+          "text": "private final Map<Board, Target[]> targets = Collections.synchronizedMap(new WeakHashMap<>());"
+        },
+        {
+          "line": 40,
+          "text": "synchronized (board) {"
+        },
+        {
+          "line": 67,
+          "text": "@Override public void reset(Board board) { targets.remove(board); }"
+        },
+        {
+          "line": 70,
+          "text": "synchronized (board) {"
+        },
+        {
+          "line": 78,
+          "text": "synchronized (board) {"
+        },
+        {
+          "line": 97,
+          "text": "synchronized (board) {"
+        },
+        {
+          "line": 110,
+          "text": "synchronized (board) {"
+        },
+        {
+          "line": 123,
+          "text": "private int potential(Board board, int x, int y, Position target, CellState ally) {"
+        },
+        {
+          "line": 128,
+          "text": "private CellState after(Board board, int x, int y, Position target, CellState ally) {"
+        }
+      ]
+    },
+    {
+      "file": "src/main/java/org/pixelwar/pixelwar/domain/NeighborConversion.java",
+      "matches": [
+        {
+          "line": 13,
+          "text": "synchronized (board) {"
+        },
+        {
+          "line": 30,
+          "text": "synchronized (board) {"
+        },
+        {
+          "line": 41,
+          "text": "synchronized (board) {"
+        }
+      ]
+    },
+    {
+      "file": "src/main/java/org/pixelwar/pixelwar/domain/PerformanceTracker.java",
+      "matches": [
+        {
+          "line": 17,
+          "text": "private long threadId = -1, startedAt = -1, lastSampleAt, peakHeap;"
+        },
+        {
+          "line": 18,
+          "text": "private long cpu, allocated, blocked, previousCpu = -1, previousAllocated = -1, previousBlocked = -1;"
+        },
+        {
+          "line": 21,
+          "text": "public PerformanceTracker(Probe probe) { this.probe = probe; reset(); }"
+        },
+        {
+          "line": 23,
+          "text": "public void reset() {"
+        },
+        {
+          "line": 52,
+          "text": "private void sample(long elapsedNanos) {"
+        }
+      ]
+    },
+    {
+      "file": "src/main/java/org/pixelwar/pixelwar/domain/PlacementStrategy.java",
+      "matches": [
+        {
+          "line": 10,
+          "text": "default void reset(Board board) {}"
+        }
+      ]
+    },
+    {
+      "file": "src/main/java/org/pixelwar/pixelwar/domain/PositionStrategy.java",
+      "matches": []
+    },
+    {
+      "file": "src/main/java/org/pixelwar/pixelwar/domain/RandomPlacementStrategy.java",
+      "matches": [
+        {
+          "line": 12,
+          "text": "synchronized (board) {"
+        }
+      ]
+    },
+    {
+      "file": "src/main/java/org/pixelwar/pixelwar/domain/Simulation.java",
+      "matches": [
+        {
+          "line": 84,
+          "text": "private final long[] attemptsByPlayer = new long[4], modificationsByPlayer = new long[4],"
+        },
+        {
+          "line": 88,
+          "text": "private int firstPlayer;"
+        },
+        {
+          "line": 89,
+          "text": "private long generation, accumulatedNs, runningSince, attempts, modifications, actions, emptyActions;"
+        },
+        {
+          "line": 90,
+          "text": "private long latencyTotal, latencyMin = Long.MAX_VALUE, latencyMax;"
+        },
+        {
+          "line": 91,
+          "text": "private long conversionPasses, conversions, conversionTotal, conversionMin = Long.MAX_VALUE, conversionMax;"
+        },
+        {
+          "line": 120,
+          "text": "public synchronized Status start() {"
+        },
+        {
+          "line": 129,
+          "text": "public synchronized Status pause() {"
+        },
+        {
+          "line": 136,
+          "text": "public synchronized Status resume() {"
+        },
+        {
+          "line": 144,
+          "text": "public synchronized Status stop() {"
+        },
+        {
+          "line": 149,
+          "text": "public synchronized Status reset() {"
+        },
+        {
+          "line": 151,
+          "text": "board.reset();"
+        },
+        {
+          "line": 152,
+          "text": "positions.reset(board);"
+        },
+        {
+          "line": 153,
+          "text": "for (var stock : stocks) stock.reset();"
+        },
+        {
+          "line": 165,
+          "text": "performance.reset();"
+        },
+        {
+          "line": 175,
+          "text": "private synchronized void playRound(long expectedGeneration) {"
+        },
+        {
+          "line": 194,
+          "text": "synchronized (this) {"
+        },
+        {
+          "line": 252,
+          "text": "private long elapsedNs() { return accumulatedNs + (state == State.RUNNING ? clock.getAsLong() - runningSince : 0); }"
+        },
+        {
+          "line": 260,
+          "text": "private Status snapshot(long elapsed) {"
+        },
+        {
+          "line": 265,
+          "text": "public synchronized Status status() { return snapshot(elapsedNs()); }"
+        },
+        {
+          "line": 266,
+          "text": "public synchronized Status startTrial(long count, long seed) {"
+        },
+        {
+          "line": 270,
+          "text": "reset();"
+        },
+        {
+          "line": 276,
+          "text": "public synchronized Performance performance() {"
+        },
+        {
+          "line": 281,
+          "text": "public synchronized List<Score> scores() {"
+        },
+        {
+          "line": 285,
+          "text": "public synchronized Preview preview() {"
+        },
+        {
+          "line": 289,
+          "text": "public synchronized Metrics metrics() {"
+        },
+        {
+          "line": 318,
+          "text": "private static double rate(long count, double seconds) { return seconds == 0 ? 0 : count / seconds; }"
+        },
+        {
+          "line": 319,
+          "text": "@Override public synchronized void close() { freeze(State.STOPPED); closed = true; executor.shutdownNow(); }"
+        }
+      ]
+    },
+    {
+      "file": "src/main/java/org/pixelwar/pixelwar/domain/Stock.java",
+      "matches": [
+        {
+          "line": 20,
+          "text": "private int available;"
+        },
+        {
+          "line": 21,
+          "text": "private long lastRechargeNs;"
+        },
+        {
+          "line": 28,
+          "text": "reset();"
+        },
+        {
+          "line": 51,
+          "text": "public void reset() {"
+        }
+      ]
+    },
+    {
+      "file": "src/main/java/org/pixelwar/pixelwar/HealthController.java",
+      "matches": []
+    },
+    {
+      "file": "src/main/java/org/pixelwar/pixelwar/HttpPerformanceFilter.java",
+      "matches": [
+        {
+          "line": 23,
+          "text": "private long generation, blockedNanos;"
+        },
+        {
+          "line": 31,
+          "text": "synchronized (this) { epoch = generation; }"
+        },
+        {
+          "line": 43,
+          "text": "synchronized void record(long epoch, boolean read, long duration, long before, long after) {"
+        },
+        {
+          "line": 48,
+          "text": "public synchronized void reset() {"
+        },
+        {
+          "line": 52,
+          "text": "public synchronized void resetIncluding(HttpServletRequest request) {"
+        },
+        {
+          "line": 53,
+          "text": "reset();"
+        },
+        {
+          "line": 56,
+          "text": "public synchronized Snapshot snapshot() {"
+        },
+        {
+          "line": 60,
+          "text": "private final long[] durations;"
+        },
+        {
+          "line": 61,
+          "text": "private int size, next;"
+        }
+      ]
+    },
+    {
+      "file": "src/main/java/org/pixelwar/pixelwar/PixelWarApplication.java",
+      "matches": []
+    },
+    {
+      "file": "src/main/java/org/pixelwar/pixelwar/PixelWarConfiguration.java",
+      "matches": []
+    },
+    {
+      "file": "src/main/java/org/pixelwar/pixelwar/SimulationController.java",
+      "matches": [
+        {
+          "line": 29,
+          "text": "@PostMapping(\"/simulation/reset\") public Simulation.Status reset(HttpServletRequest request) { var state = simulation.reset(); http.resetIncluding(request); return state; }"
+        }
+      ]
+    }
+  ],
+  "note": "Text search locations support the manual access audit; this is not a synchronization proof by itself."
+}

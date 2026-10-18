@@ -1,0 +1,8 @@
+{
+  "base": "180012fc1c1cf883a0dca233806093440baa113c",
+  "productionDiff": "",
+  "testsDiff": "",
+  "checkedCommand": "git diff 180012f -- src/main src/test",
+  "candidate": "none",
+  "productionUnchanged": true
+}
