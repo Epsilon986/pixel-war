@@ -21,14 +21,22 @@ public final class Simulation implements AutoCloseable {
     public record Player(int id, String name, CellState color, long intervalNs) {}
     public record Configuration(int width, int height, long intervalNs, int previewWidth, int previewHeight,
                                 Stock.Configuration stock, int maxPixelsPerAction, boolean conversionEnabled,
-                                String strategy, double explorationProbability, int frontierSampleSize) {
+                                String strategy, double explorationProbability, int frontierSampleSize,
+                                int weakOpponentBonus, int targetHoldActions) {
+        public Configuration(int width, int height, long intervalNs, int previewWidth, int previewHeight,
+                             Stock.Configuration stock, int maxPixelsPerAction, boolean conversionEnabled,
+                             String strategy, double explorationProbability, int frontierSampleSize) {
+            this(width, height, intervalNs, previewWidth, previewHeight, stock, maxPixelsPerAction,
+                    conversionEnabled, strategy, explorationProbability, frontierSampleSize, 8, 20);
+        }
         public Configuration(int width, int height, long intervalNs, int previewWidth, int previewHeight,
                              Stock.Configuration stock, int maxPixelsPerAction, boolean conversionEnabled) {
             this(width, height, intervalNs, previewWidth, previewHeight, stock, maxPixelsPerAction,
-                    conversionEnabled, "frontier", 0.10, 10);
+                    conversionEnabled, "frontier", 0.10, 10, 8, 20);
         }
         public Configuration {
             PlacementStrategy.validate(strategy, explorationProbability, frontierSampleSize);
+            FrontierPlacementStrategy.validateBonus(weakOpponentBonus, targetHoldActions);
             if (width <= 0 || height <= 0) throw new IllegalArgumentException("pixelwar.board dimensions must be positive");
             if (intervalNs <= 0) throw new IllegalArgumentException("pixelwar.players.interval-ns must be positive");
             if (previewWidth <= 0 || previewHeight <= 0) throw new IllegalArgumentException("pixelwar.preview dimensions must be positive");
@@ -133,6 +141,7 @@ public final class Simulation implements AutoCloseable {
     public synchronized Status reset() {
         freeze(State.STOPPED);
         board.reset();
+        positions.reset(board);
         for (var stock : stocks) stock.reset();
         Arrays.fill(established, false);
         Arrays.fill(eliminated, false);
@@ -179,6 +188,7 @@ public final class Simulation implements AutoCloseable {
                 int count = stockEnabled ? Math.min(stock.available(), configuration.maxPixelsPerAction())
                         : configuration.maxPixelsPerAction();
                 if (count == 0) { emptyActions++; emptyActionsByPlayer[index]++; }
+                if (count > 0) positions.beginAction(board, players.get(index));
                 for (int n = 0; n < count; n++) {
                     var position = positions.choose(board, players.get(index));
                     boolean changed = board.placeForPlayer(position.x(), position.y(), players.get(index).color());

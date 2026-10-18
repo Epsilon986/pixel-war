@@ -9,8 +9,12 @@ La V3 ajoute une stratégie de frontière : exploration uniforme avec une probab
 | `pixelwar.players.strategy` | `frontier` | `frontier` ou `random` |
 | `pixelwar.players.exploration-probability` | `0.10` | Nombre fini de 0 à 1 inclus |
 | `pixelwar.players.frontier-sample-size` | `10` | Entier strictement positif |
+| `pixelwar.players.weak-opponent-bonus` | `8` | Entier de 0 à 1 000 000 ; 0 désactive le bonus |
+| `pixelwar.players.target-hold-actions` | `20` | Nombre strictement positif d’actions avec tentatives |
 
-Le mode `random` conserve la référence V2 : tirage uniforme parmi les cellules vides, puis sur tout le plateau lorsqu’il est rempli. Dans le mode `frontier`, l’exploration et le repli sans frontière tirent sur tout le plateau. Les adversaires restent protégés tant qu’il reste une cellule vide, et les joueurs éliminés restent inactifs jusqu’au reset.
+Les cibles adverses reçoivent un bonus selon leur faiblesse relative et un bonus supplémentaire si elles appartiennent à l’adversaire prioritaire. Chaque joueur conserve sa priorité pendant vingt actions par défaut, puis la réévalue ; une cible disparue est remplacée dès l’action suivante. Le reset efface cette mémoire. L’exploration est conservée. Les règles et les essais d’élimination avec et sans bonus sont détaillés dans [docs/v3.md](docs/v3.md).
+
+Le mode `random` conserve le choix V2 : tirage uniforme parmi les cellules vides, puis sur tout le plateau lorsqu’il est rempli. Dans le mode `frontier`, l’exploration et le repli sans frontière privilégient aussi les cellules vides. Les poses sur les adversaires sont autorisées avant le remplissage complet : les territoires peuvent se conquérir dès leur rencontre. Les joueurs éliminés restent inactifs jusqu’au reset. Ces changements sont tracés dans [docs/v3.md](docs/v3.md).
 
 ```powershell
 java -Xmx1g -jar target/pixel-war-0.0.1-SNAPSHOT.jar --spring.profiles.active=small

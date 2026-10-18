@@ -2,6 +2,8 @@
 
 Implémentation et mesures exploratoires du 10 octobre 2026 sur la branche `feat/v3`.
 
+> Rapport historique de la première implémentation V3. Les règles de conquête et d’exploration ont ensuite évolué : voir [v3.md](v3.md). Les mesures ci-dessous précèdent ces changements.
+
 ## Décisions et implémentation
 
 Les quatre joueurs utilisent par défaut `FrontierPlacementStrategy`, avec une exploration uniforme de 10 % et dix candidats tirés avec remise. Le score est `2 × voisins alliés + bonus adversaire + 8 × conversions alliées potentielles`. L’anticipation examine uniquement les centres voisins intérieurs ; elle ne modifie aucune cellule. Un départage par réservoir choisit aléatoirement parmi les occurrences de score égal dans l’échantillon.

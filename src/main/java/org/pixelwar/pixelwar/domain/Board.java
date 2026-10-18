@@ -172,19 +172,19 @@ public final class Board {
         return cells[y][x] == CellState.EMPTY && place(x, y, color);
     }
 
-    /** Players may replace opponents only once no empty cell remains. */
+    /** Players may conquer opponents while empty cells remain; allied cells are no-ops. */
     public synchronized boolean placeForPlayer(int x, int y, CellState color) {
         check(x, y);
         Objects.requireNonNull(color, "color");
         if (color == CellState.EMPTY) throw new IllegalArgumentException("Player color must not be EMPTY");
         if (cells[y][x] == color) return false;
-        if (cells[y][x] != CellState.EMPTY && totals.get(CellState.EMPTY) > 0) return false;
         return place(x, y, color);
     }
 
     public synchronized Map<CellState, Long> counts() {
         return new EnumMap<>(totals);
     }
+    public synchronized long cellCount(CellState color) { return totals.get(Objects.requireNonNull(color)); }
 
     public synchronized CellState[][] preview(int requestedWidth, int requestedHeight) {
         if (requestedWidth <= 0 || requestedHeight <= 0) throw new IllegalArgumentException("Preview dimensions must be positive");

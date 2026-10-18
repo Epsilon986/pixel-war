@@ -6,6 +6,8 @@ import java.util.random.RandomGenerator;
 public interface PlacementStrategy {
     record Position(int x, int y) {}
     Position choose(Board board, Simulation.Player player);
+    default void beginAction(Board board, Simulation.Player player) {}
+    default void reset(Board board) {}
 
     static void validate(String strategy, double explorationProbability, int sampleSize) {
         if (!"random".equals(strategy) && !"frontier".equals(strategy)) {
@@ -19,6 +21,7 @@ public interface PlacementStrategy {
 
     static PlacementStrategy create(Simulation.Configuration config, RandomGenerator random) {
         return "random".equals(config.strategy()) ? new RandomPlacementStrategy(random)
-                : new FrontierPlacementStrategy(random, config.explorationProbability(), config.frontierSampleSize());
+                : new FrontierPlacementStrategy(random, config.explorationProbability(), config.frontierSampleSize(),
+                        config.weakOpponentBonus(), config.targetHoldActions());
     }
 }

@@ -1,0 +1,7 @@
+size,seed,bonus,attempts,eliminations,firstEliminationAttempts,secondEliminationAttempts
+500,11,0,5000000,0,-1,-1
+500,11,8,5000000,0,-1,-1
+500,22,0,5000000,0,-1,-1
+500,22,8,2108230,2,2039990,2108230
+500,33,0,5000000,0,-1,-1
+500,33,8,5000000,0,-1,-1

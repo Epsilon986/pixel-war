@@ -25,6 +25,8 @@ class ApiTests {
                 .andExpect(jsonPath("$.configuration.strategy").value("frontier"))
                 .andExpect(jsonPath("$.configuration.explorationProbability").value(0.10))
                 .andExpect(jsonPath("$.configuration.frontierSampleSize").value(10))
+                .andExpect(jsonPath("$.configuration.weakOpponentBonus").value(8))
+                .andExpect(jsonPath("$.configuration.targetHoldActions").value(20))
                 .andExpect(jsonPath("$.players[0].eliminated").value(false))
                 .andExpect(jsonPath("$.players[0].stock").value(100)).andExpect(jsonPath("$.players[0].stockCapacity").value(1000));
         mvc.perform(post("/api/simulation/pause")).andExpect(status().isConflict()).andExpect(jsonPath("$.error").exists());

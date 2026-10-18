@@ -27,7 +27,7 @@ async function refresh() {
     ? `recharge : ${number(config.stock.refillAmount)} pixels / ${number(config.stock.refillIntervalNs)} ns`
     : 'stock désactivé';
   const strategyDescription = config.strategy === 'frontier'
-    ? `frontière · exploration ${number(config.explorationProbability * 100)} % · ${number(config.frontierSampleSize)} candidats`
+    ? `frontière · exploration ${number(config.explorationProbability * 100)} % · ${number(config.frontierSampleSize)} candidats · bonus adversaire faible ${number(config.weakOpponentBonus)} · cible conservée ${number(config.targetHoldActions)} actions`
     : 'aléatoire';
   $('configuration').textContent = `Stratégie : ${strategyDescription} · Action : ${number(config.intervalNs)} ns · maximum ${config.maxPixelsPerAction} pixels/action · ${stockDescription} · conversions ${config.conversionEnabled ? 'activées' : 'désactivées'}`;
   $('dimensions').textContent = `${config.width} × ${config.height} cellules · aperçu ${preview.width} × ${preview.height}`;

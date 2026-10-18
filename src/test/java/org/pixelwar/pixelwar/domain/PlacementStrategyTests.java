@@ -10,19 +10,49 @@ import static org.mockito.ArgumentMatchers.*;
 class PlacementStrategyTests {
     private final Simulation.Player red = new Simulation.Player(1, "red", CellState.RED, 1);
 
-    @Test void emptyFrontierAndFullExplorationUseUniformBoardCoordinates() {
+    @Test void emptyFrontierAndFullExplorationPreferRemainingEmptyCell() {
         for (double probability : new double[]{0, 1}) {
             var board = new Board(5, 3);
+            for (int y = 0; y < 3; y++) for (int x = 0; x < 5; x++) {
+                if (x != 4 || y != 2) board.place(x, y, probability == 1 && x == 2 && y == 1 ? CellState.RED : CellState.BLUE);
+            }
+            var random = mock(java.util.random.RandomGenerator.class);
+            when(random.nextDouble()).thenReturn(0.5);
+            when(random.nextInt(1)).thenReturn(0);
+            var strategy = new FrontierPlacementStrategy(random, probability, 10);
+            assertEquals(new PlacementStrategy.Position(4, 2), strategy.choose(board, red));
+            verify(random).nextInt(1);
+            verify(random, never()).nextInt(5);
+            verify(random, never()).nextInt(3);
+        }
+    }
+
+    @Test void explorationAndEmptyFrontierUseUniformCoordinatesWhenBoardIsFull() {
+        for (double probability : new double[]{0, 1}) {
+            var board = new Board(5, 3);
+            for (int y = 0; y < 3; y++) for (int x = 0; x < 5; x++) board.place(x, y, CellState.BLUE);
             if (probability == 1) board.place(2, 1, CellState.RED);
             var random = mock(java.util.random.RandomGenerator.class);
             when(random.nextDouble()).thenReturn(0.5);
             when(random.nextInt(5)).thenReturn(4);
             when(random.nextInt(3)).thenReturn(2);
-            var strategy = new FrontierPlacementStrategy(random, probability, 10);
-            assertEquals(new PlacementStrategy.Position(4, 2), strategy.choose(board, red));
+            assertEquals(new PlacementStrategy.Position(4, 2), new FrontierPlacementStrategy(random, probability, 10).choose(board, red));
             verify(random).nextInt(5);
             verify(random).nextInt(3);
         }
+    }
+
+    @Test void fullExplorationFillsEveryEmptyCellWithoutRepeatedOccupiedTargets() {
+        var board = new Board(10, 10);
+        board.place(3, 3, CellState.BLUE);
+        var strategy = new FrontierPlacementStrategy(new Random(20261010), 1, 10);
+        for (int i = 0; i < 99; i++) {
+            var position = strategy.choose(board, red);
+            assertEquals(CellState.EMPTY, board.get(position.x(), position.y()));
+            assertTrue(board.placeForPlayer(position.x(), position.y(), CellState.RED));
+        }
+        assertEquals(0L, board.counts().get(CellState.EMPTY));
+        assertEquals(CellState.BLUE, board.get(3, 3));
     }
 
     @Test void zeroExplorationUsesFrontierAndUpdatesBetweenSequentialPoses() {
