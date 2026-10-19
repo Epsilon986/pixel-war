@@ -122,10 +122,13 @@ public final class Board {
         return frontier(color).contains(y * width + x);
     }
     public synchronized PlacementStrategy.Position randomFrontierPosition(CellState color, RandomGenerator random) {
+        int id = randomFrontierId(color, random);
+        return id < 0 ? null : new PlacementStrategy.Position(id % width, id / width);
+    }
+    /** Internal row-major cell id, or -1 for an empty frontier; no draw in that case. */
+    synchronized int randomFrontierId(CellState color, RandomGenerator random) {
         var frontier = frontier(color);
-        if (frontier.size() == 0) return null;
-        int id = frontier.randomId(random);
-        return new PlacementStrategy.Position(id % width, id / width);
+        return frontier.size() == 0 ? -1 : frontier.randomId(random);
     }
     public synchronized FrontierMetrics frontierMetrics() {
         var sizes = new EnumMap<CellState, Integer>(CellState.class);

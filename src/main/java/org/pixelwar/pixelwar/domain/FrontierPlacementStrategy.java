@@ -81,22 +81,28 @@ public final class FrontierPlacementStrategy implements PlacementStrategy {
                 if (empty != null) return empty;
                 return new Position(random.nextInt(board.width()), random.nextInt(board.height()));
             }
-            Position best = null;
+            int best = -1;
             int bestScore = Integer.MIN_VALUE, ties = 0;
             for (int i = 0; i < sampleSize; i++) {
-                var candidate = board.randomFrontierPosition(player.color(), random);
-                int score = conquestScore(board, candidate, player.color());
+                int candidate = board.randomFrontierId(player.color(), random);
+                // The frontier stays nonempty under this Board monitor; sampling never mutates it.
+                int x = candidate % board.width(), y = candidate / board.width();
+                int score = conquestScore(board, x, y, player.color());
                 if (score > bestScore) { best = candidate; bestScore = score; ties = 1; }
                 else if (score == bestScore && random.nextInt(++ties) == 0) best = candidate;
             }
-            return best;
+            return new Position(best % board.width(), best / board.width());
         }
     }
 
     int conquestScore(Board board, Position target, CellState ally) {
+        return conquestScore(board, target.x(), target.y(), ally);
+    }
+
+    int conquestScore(Board board, int x, int y, CellState ally) {
         synchronized (board) {
-            int base = score(board, target, ally);
-            var enemy = board.get(target.x(), target.y());
+            int base = score(board, x, y, ally);
+            var enemy = board.get(x, y);
             if (weakOpponentBonus == 0 || enemy == CellState.EMPTY || enemy == ally) return base;
             long maximum = 0;
             for (var color : CellState.values()) if (color != CellState.EMPTY && color != ally) maximum = Math.max(maximum, board.cellCount(color));
@@ -107,25 +113,28 @@ public final class FrontierPlacementStrategy implements PlacementStrategy {
     }
 
     int score(Board board, Position target, CellState ally) {
+        return score(board, target.x(), target.y(), ally);
+    }
+
+    int score(Board board, int x, int y, CellState ally) {
         synchronized (board) {
-            int x = target.x(), y = target.y();
             int score = board.get(x, y) != CellState.EMPTY && board.get(x, y) != ally ? 1 : 0;
             if (x > 0 && board.get(x - 1, y) == ally) score += 2;
             if (x + 1 < board.width() && board.get(x + 1, y) == ally) score += 2;
             if (y > 0 && board.get(x, y - 1) == ally) score += 2;
             if (y + 1 < board.height() && board.get(x, y + 1) == ally) score += 2;
-            score += 8 * (potential(board, x - 1, y, target, ally) + potential(board, x + 1, y, target, ally)
-                    + potential(board, x, y - 1, target, ally) + potential(board, x, y + 1, target, ally));
+            score += 8 * (potential(board, x - 1, y, x, y, ally) + potential(board, x + 1, y, x, y, ally)
+                    + potential(board, x, y - 1, x, y, ally) + potential(board, x, y + 1, x, y, ally));
             return score;
         }
     }
 
-    private int potential(Board board, int x, int y, Position target, CellState ally) {
+    private int potential(Board board, int x, int y, int targetX, int targetY, CellState ally) {
         if (x <= 0 || x >= board.width() - 1 || y <= 0 || y >= board.height() - 1 || board.get(x, y) == ally) return 0;
-        return after(board, x - 1, y, target, ally) == ally && after(board, x + 1, y, target, ally) == ally
-                && after(board, x, y - 1, target, ally) == ally && after(board, x, y + 1, target, ally) == ally ? 1 : 0;
+        return after(board, x - 1, y, targetX, targetY, ally) == ally && after(board, x + 1, y, targetX, targetY, ally) == ally
+                && after(board, x, y - 1, targetX, targetY, ally) == ally && after(board, x, y + 1, targetX, targetY, ally) == ally ? 1 : 0;
     }
-    private CellState after(Board board, int x, int y, Position target, CellState ally) {
-        return x == target.x() && y == target.y() ? ally : board.get(x, y);
+    private CellState after(Board board, int x, int y, int targetX, int targetY, CellState ally) {
+        return x == targetX && y == targetY ? ally : board.get(x, y);
     }
 }
