@@ -27,9 +27,9 @@ class PrimitivePositionTests {
         if (state == 1) { board.place(0, 0, CellState.RED); board.place(6, 4, CellState.BLUE); }
         if (state >= 2) {
             for (int y = 0; y < 5; y++) for (int x = 0; x < 7; x++)
-                board.place(x, y, state == 2 ? CellState.BLUE : CellState.values()[1 + (x + 2*y) % 4]);
+                if (state != 4 || x != 6 || y != 4)
+                    board.place(x, y, state == 2 ? CellState.BLUE : CellState.values()[1 + (x + 2*y) % 4]);
         }
-        if (state == 4) board.place(6, 4, CellState.EMPTY);
         return board;
     }
 
