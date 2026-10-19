@@ -62,6 +62,9 @@ function Prepare-Version([string]$Label, [string]$Reference) {
                 $cp = 'target/classes;' + (Get-Content target/experiment-classpath.txt -Raw).Trim()
                 New-Item -ItemType Directory -Force -Path target/experiment-classes | Out-Null
                 $javaFiles = @(Get-ChildItem -LiteralPath (Join-Path $repo scripts/opti03) -Filter '*.java' | ForEach-Object FullName)
+                $harnessSources = Join-Path $folder 'harness-sources'
+                New-Item -ItemType Directory -Force -Path $harnessSources | Out-Null
+                foreach ($javaFile in $javaFiles) { Copy-Item -LiteralPath $javaFile -Destination $harnessSources }
                 Invoke-LoggedNative (Join-Path $jdkBin 'javac.exe') (@('--release','21','--class-path',$cp,'-d','target/experiment-classes') + $javaFiles) (Join-Path $results "logs/harness-$Label.log")
                 @('Premain-Class: org.pixelwar.pixelwar.domain.StorageAgent','') | Set-Content -LiteralPath target/experiment-manifest.mf -Encoding Ascii
                 & (Join-Path $jdkBin 'jar.exe') --create --file target/storage-agent.jar --manifest target/experiment-manifest.mf -C target/experiment-classes .

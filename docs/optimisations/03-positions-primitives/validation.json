@@ -1,0 +1,9 @@
+{
+  "runs": 98,
+  "comparisons": 33,
+  "functionalReplays": 12,
+  "nonRepresentative": [],
+  "workloadChecksPassed": true,
+  "binaryHashesMatchBuilds": true,
+  "configurationsEqualBetweenVariants": true
+}

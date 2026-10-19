@@ -1,0 +1,10 @@
+{
+  "before": "ea462e19e55e6f8f7366358918f07d9dfed6f7bb",
+  "after": "f61ad8fb6c3bb186dc7043954918ca8498db0513",
+  "productionChanged": [
+    "src/main/java/org/pixelwar/pixelwar/domain/Board.java",
+    "src/main/java/org/pixelwar/pixelwar/domain/FrontierPlacementStrategy.java"
+  ],
+  "originalBranch": "refacto_metriques",
+  "originalCommit": "a73c938c68e11174b5687c094efcf20d505b1b0f"
+}

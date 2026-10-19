@@ -1,0 +1,242 @@
+﻿{
+    "mode":  "engine",
+    "size":  500,
+    "initial":  "empty",
+    "seed":  11,
+    "requestedActions":  50000,
+    "executedActions":  50000,
+    "warmupSeconds":  3.0,
+    "preparationNanos":  2117800,
+    "elapsedNanos":  661339700,
+    "cpuNanos":  656250000,
+    "allocatedBytes":  72911336,
+    "allocatedBytesPerAction":  1458.22672,
+    "peakObservedHeapBytes":  79009472,
+    "heapSamplePeriodMillis":  10,
+    "attemptsPerSecond":  756041.1086768267,
+    "modificationsPerSecond":  756041.1086768267,
+    "before":  {
+                   "actions":  0,
+                   "attempts":  0,
+                   "modifications":  0,
+                   "conversions":  0,
+                   "conversionPasses":  0,
+                   "boardChanges":  0,
+                   "counts":  {
+                                  "EMPTY":  250000,
+                                  "RED":  0,
+                                  "BLUE":  0,
+                                  "GREEN":  0,
+                                  "YELLOW":  0
+                              },
+                   "frontierSizes":  {
+                                         "YELLOW":  0,
+                                         "RED":  0,
+                                         "BLUE":  0,
+                                         "GREEN":  0
+                                     },
+                   "players":  [
+                                   {
+                                       "color":  "RED",
+                                       "stock":  100,
+                                       "eliminated":  false,
+                                       "attempts":  0,
+                                       "modifications":  0,
+                                       "actions":  0,
+                                       "actionsWithoutStock":  0,
+                                       "pixelsConsumed":  "0",
+                                       "pixelsRefilled":  "0",
+                                       "pixelsDiscarded":  "0",
+                                       "conversionsReceived":  0,
+                                       "priorityTarget":  null
+                                   },
+                                   {
+                                       "color":  "BLUE",
+                                       "stock":  100,
+                                       "eliminated":  false,
+                                       "attempts":  0,
+                                       "modifications":  0,
+                                       "actions":  0,
+                                       "actionsWithoutStock":  0,
+                                       "pixelsConsumed":  "0",
+                                       "pixelsRefilled":  "0",
+                                       "pixelsDiscarded":  "0",
+                                       "conversionsReceived":  0,
+                                       "priorityTarget":  null
+                                   },
+                                   {
+                                       "color":  "GREEN",
+                                       "stock":  100,
+                                       "eliminated":  false,
+                                       "attempts":  0,
+                                       "modifications":  0,
+                                       "actions":  0,
+                                       "actionsWithoutStock":  0,
+                                       "pixelsConsumed":  "0",
+                                       "pixelsRefilled":  "0",
+                                       "pixelsDiscarded":  "0",
+                                       "conversionsReceived":  0,
+                                       "priorityTarget":  null
+                                   },
+                                   {
+                                       "color":  "YELLOW",
+                                       "stock":  100,
+                                       "eliminated":  false,
+                                       "attempts":  0,
+                                       "modifications":  0,
+                                       "actions":  0,
+                                       "actionsWithoutStock":  0,
+                                       "pixelsConsumed":  "0",
+                                       "pixelsRefilled":  "0",
+                                       "pixelsDiscarded":  "0",
+                                       "conversionsReceived":  0,
+                                       "priorityTarget":  null
+                                   }
+                               ]
+               },
+    "after":  {
+                  "actions":  50000,
+                  "attempts":  500000,
+                  "modifications":  500000,
+                  "conversions":  26716,
+                  "conversionPasses":  50000,
+                  "boardChanges":  526716,
+                  "counts":  {
+                                 "EMPTY":  62011,
+                                 "RED":  81407,
+                                 "BLUE":  78794,
+                                 "GREEN":  10081,
+                                 "YELLOW":  17707
+                             },
+                  "frontierSizes":  {
+                                        "YELLOW":  19537,
+                                        "RED":  47748,
+                                        "BLUE":  47775,
+                                        "GREEN":  13829
+                                    },
+                  "players":  [
+                                  {
+                                      "color":  "RED",
+                                      "stock":  100,
+                                      "eliminated":  false,
+                                      "attempts":  125000,
+                                      "modifications":  125000,
+                                      "actions":  12500,
+                                      "actionsWithoutStock":  0,
+                                      "pixelsConsumed":  "0",
+                                      "pixelsRefilled":  "0",
+                                      "pixelsDiscarded":  "0",
+                                      "conversionsReceived":  6330,
+                                      "priorityTarget":  "GREEN"
+                                  },
+                                  {
+                                      "color":  "BLUE",
+                                      "stock":  100,
+                                      "eliminated":  false,
+                                      "attempts":  125000,
+                                      "modifications":  125000,
+                                      "actions":  12500,
+                                      "actionsWithoutStock":  0,
+                                      "pixelsConsumed":  "0",
+                                      "pixelsRefilled":  "0",
+                                      "pixelsDiscarded":  "0",
+                                      "conversionsReceived":  6232,
+                                      "priorityTarget":  "GREEN"
+                                  },
+                                  {
+                                      "color":  "GREEN",
+                                      "stock":  100,
+                                      "eliminated":  false,
+                                      "attempts":  125000,
+                                      "modifications":  125000,
+                                      "actions":  12500,
+                                      "actionsWithoutStock":  0,
+                                      "pixelsConsumed":  "0",
+                                      "pixelsRefilled":  "0",
+                                      "pixelsDiscarded":  "0",
+                                      "conversionsReceived":  6899,
+                                      "priorityTarget":  "YELLOW"
+                                  },
+                                  {
+                                      "color":  "YELLOW",
+                                      "stock":  100,
+                                      "eliminated":  false,
+                                      "attempts":  125000,
+                                      "modifications":  125000,
+                                      "actions":  12500,
+                                      "actionsWithoutStock":  0,
+                                      "pixelsConsumed":  "0",
+                                      "pixelsRefilled":  "0",
+                                      "pixelsDiscarded":  "0",
+                                      "conversionsReceived":  7255,
+                                      "priorityTarget":  "GREEN"
+                                  }
+                              ]
+              },
+    "spatialSha256":  "153d8df220ceb432b281cf13279859693096ca9fe7d2b18a94e7680f37c55419",
+    "colorsLayout":  {
+                         "type":  "byte[]",
+                         "arrays":  1,
+                         "totalArrayBytes":  250016,
+                         "cells":  250000,
+                         "measurement":  "Instrumentation.getObjectSize; color arrays only; shared enum instances excluded"
+                     },
+    "runtime":  {
+                    "javaVersion":  "27+35-2325",
+                    "vm":  "OpenJDK 64-Bit Server VM",
+                    "flags":  [
+                                  "-Xms2g",
+                                  "-Xmx2g",
+                                  "-XX:+UseG1GC",
+                                  "-javaagent:C:\\Users\\gui35\\ideaProjects\\pixel-war\\target\\opti-03-results\\builds\\after\\source\\target\\storage-agent.jar"
+                              ],
+                    "os":  "Windows 11",
+                    "gc":  [
+                               "G1 Young Generation",
+                               "G1 Concurrent GC",
+                               "G1 Old Generation"
+                           ],
+                    "maxHeapBytes":  2147483648,
+                    "processors":  20,
+                    "compressedOops":  "true",
+                    "objectAlignment":  "8"
+                },
+    "errors":  [
+
+               ],
+    "gcBefore":  {
+                     "collections":  3,
+                     "collectionMillis":  14
+                 },
+    "gcAfter":  {
+                    "collections":  3,
+                    "collectionMillis":  14
+                },
+    "victoryDetectedNanos":  null,
+    "lastContestedNanos":  661337900,
+    "victoryDetectedActions":  null,
+    "aliveAfter":  4,
+    "representativeContest":  true,
+    "version":  "after",
+    "commit":  "f61ad8fb6c3bb186dc7043954918ca8498db0513",
+    "runId":  "engine-500-empty-s11-p2-after",
+    "pairOrder":  0,
+    "binarySha256":  "87F6B0C99D9E734A74EE527D9A111E4491F9D21C9228F87D303DF0923CEF833B",
+    "harnessSha256":  "3CA4D28BEED6FBDE1E6D599C76BD1C8FEC8CA36109DD323EC6156A22BAE00542",
+    "configuration":  {
+                          "width":  500,
+                          "height":  500,
+                          "intervalNs":  10,
+                          "maxPixelsPerAction":  10,
+                          "strategy":  "frontier",
+                          "explorationProbability":  0.1,
+                          "frontierSampleSize":  10,
+                          "weakOpponentBonus":  8,
+                          "targetHoldActions":  20,
+                          "stockEnabled":  false,
+                          "conversionEnabled":  true,
+                          "previewWidth":  500,
+                          "previewHeight":  500
+                      },
+    "completedUtc":  "2026-10-19T16:38:52.0238253Z"
+}

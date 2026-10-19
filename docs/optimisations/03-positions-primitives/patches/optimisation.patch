@@ -1,0 +1,343 @@
+diff --git a/src/main/java/org/pixelwar/pixelwar/domain/Board.java b/src/main/java/org/pixelwar/pixelwar/domain/Board.java
+index c0ebdce..0493502 100644
+--- a/src/main/java/org/pixelwar/pixelwar/domain/Board.java
++++ b/src/main/java/org/pixelwar/pixelwar/domain/Board.java
+@@ -122,10 +122,13 @@ public final class Board {
+         return frontier(color).contains(y * width + x);
+     }
+     public synchronized PlacementStrategy.Position randomFrontierPosition(CellState color, RandomGenerator random) {
++        int id = randomFrontierId(color, random);
++        return id < 0 ? null : new PlacementStrategy.Position(id % width, id / width);
++    }
++    /** Internal row-major cell id, or -1 for an empty frontier; no draw in that case. */
++    synchronized int randomFrontierId(CellState color, RandomGenerator random) {
+         var frontier = frontier(color);
+-        if (frontier.size() == 0) return null;
+-        int id = frontier.randomId(random);
+-        return new PlacementStrategy.Position(id % width, id / width);
++        return frontier.size() == 0 ? -1 : frontier.randomId(random);
+     }
+     public synchronized FrontierMetrics frontierMetrics() {
+         var sizes = new EnumMap<CellState, Integer>(CellState.class);
+diff --git a/src/main/java/org/pixelwar/pixelwar/domain/FrontierPlacementStrategy.java b/src/main/java/org/pixelwar/pixelwar/domain/FrontierPlacementStrategy.java
+index c09938e..a9e9c90 100644
+--- a/src/main/java/org/pixelwar/pixelwar/domain/FrontierPlacementStrategy.java
++++ b/src/main/java/org/pixelwar/pixelwar/domain/FrontierPlacementStrategy.java
+@@ -81,22 +81,28 @@ public final class FrontierPlacementStrategy implements PlacementStrategy {
+                 if (empty != null) return empty;
+                 return new Position(random.nextInt(board.width()), random.nextInt(board.height()));
+             }
+-            Position best = null;
++            int best = -1;
+             int bestScore = Integer.MIN_VALUE, ties = 0;
+             for (int i = 0; i < sampleSize; i++) {
+-                var candidate = board.randomFrontierPosition(player.color(), random);
+-                int score = conquestScore(board, candidate, player.color());
++                int candidate = board.randomFrontierId(player.color(), random);
++                // The frontier stays nonempty under this Board monitor; sampling never mutates it.
++                int x = candidate % board.width(), y = candidate / board.width();
++                int score = conquestScore(board, x, y, player.color());
+                 if (score > bestScore) { best = candidate; bestScore = score; ties = 1; }
+                 else if (score == bestScore && random.nextInt(++ties) == 0) best = candidate;
+             }
+-            return best;
++            return new Position(best % board.width(), best / board.width());
+         }
+     }
+ 
+     int conquestScore(Board board, Position target, CellState ally) {
++        return conquestScore(board, target.x(), target.y(), ally);
++    }
++
++    int conquestScore(Board board, int x, int y, CellState ally) {
+         synchronized (board) {
+-            int base = score(board, target, ally);
+-            var enemy = board.get(target.x(), target.y());
++            int base = score(board, x, y, ally);
++            var enemy = board.get(x, y);
+             if (weakOpponentBonus == 0 || enemy == CellState.EMPTY || enemy == ally) return base;
+             long maximum = 0;
+             for (var color : CellState.values()) if (color != CellState.EMPTY && color != ally) maximum = Math.max(maximum, board.cellCount(color));
+@@ -107,25 +113,28 @@ public final class FrontierPlacementStrategy implements PlacementStrategy {
+     }
+ 
+     int score(Board board, Position target, CellState ally) {
++        return score(board, target.x(), target.y(), ally);
++    }
++
++    int score(Board board, int x, int y, CellState ally) {
+         synchronized (board) {
+-            int x = target.x(), y = target.y();
+             int score = board.get(x, y) != CellState.EMPTY && board.get(x, y) != ally ? 1 : 0;
+             if (x > 0 && board.get(x - 1, y) == ally) score += 2;
+             if (x + 1 < board.width() && board.get(x + 1, y) == ally) score += 2;
+             if (y > 0 && board.get(x, y - 1) == ally) score += 2;
+             if (y + 1 < board.height() && board.get(x, y + 1) == ally) score += 2;
+-            score += 8 * (potential(board, x - 1, y, target, ally) + potential(board, x + 1, y, target, ally)
+-                    + potential(board, x, y - 1, target, ally) + potential(board, x, y + 1, target, ally));
++            score += 8 * (potential(board, x - 1, y, x, y, ally) + potential(board, x + 1, y, x, y, ally)
++                    + potential(board, x, y - 1, x, y, ally) + potential(board, x, y + 1, x, y, ally));
+             return score;
+         }
+     }
+ 
+-    private int potential(Board board, int x, int y, Position target, CellState ally) {
++    private int potential(Board board, int x, int y, int targetX, int targetY, CellState ally) {
+         if (x <= 0 || x >= board.width() - 1 || y <= 0 || y >= board.height() - 1 || board.get(x, y) == ally) return 0;
+-        return after(board, x - 1, y, target, ally) == ally && after(board, x + 1, y, target, ally) == ally
+-                && after(board, x, y - 1, target, ally) == ally && after(board, x, y + 1, target, ally) == ally ? 1 : 0;
++        return after(board, x - 1, y, targetX, targetY, ally) == ally && after(board, x + 1, y, targetX, targetY, ally) == ally
++                && after(board, x, y - 1, targetX, targetY, ally) == ally && after(board, x, y + 1, targetX, targetY, ally) == ally ? 1 : 0;
+     }
+-    private CellState after(Board board, int x, int y, Position target, CellState ally) {
+-        return x == target.x() && y == target.y() ? ally : board.get(x, y);
++    private CellState after(Board board, int x, int y, int targetX, int targetY, CellState ally) {
++        return x == targetX && y == targetY ? ally : board.get(x, y);
+     }
+ }
+diff --git a/src/test/java/org/pixelwar/pixelwar/domain/ObjectFrontierReference.java b/src/test/java/org/pixelwar/pixelwar/domain/ObjectFrontierReference.java
+new file mode 100644
+index 0000000..701e910
+--- /dev/null
++++ b/src/test/java/org/pixelwar/pixelwar/domain/ObjectFrontierReference.java
+@@ -0,0 +1,131 @@
++package org.pixelwar.pixelwar.domain;
++
++import java.util.Objects;
++import java.util.Collections;
++import java.util.Map;
++import java.util.WeakHashMap;
++import java.util.random.RandomGenerator;
++
++final class ObjectFrontierReference implements PlacementStrategy {
++    private final RandomGenerator random;
++    private final double explorationProbability;
++    private final int sampleSize;
++    private final int weakOpponentBonus, targetHoldActions;
++    private final Map<Board, Target[]> targets = Collections.synchronizedMap(new WeakHashMap<>());
++    private static final class Target {
++        CellState color;
++        int remainingActions;
++    }
++
++    public ObjectFrontierReference(RandomGenerator random, double explorationProbability, int sampleSize) {
++        this(random, explorationProbability, sampleSize, 8, 20);
++    }
++    public ObjectFrontierReference(RandomGenerator random, double explorationProbability, int sampleSize,
++                                     int weakOpponentBonus, int targetHoldActions) {
++        PlacementStrategy.validate("frontier", explorationProbability, sampleSize);
++        validateBonus(weakOpponentBonus, targetHoldActions);
++        this.random = Objects.requireNonNull(random);
++        this.explorationProbability = explorationProbability;
++        this.sampleSize = sampleSize;
++        this.weakOpponentBonus = weakOpponentBonus;
++        this.targetHoldActions = targetHoldActions;
++    }
++
++    static void validateBonus(int bonus, int holdActions) {
++        if (bonus < 0 || bonus > 1_000_000) throw new IllegalArgumentException("pixelwar.players.weak-opponent-bonus must be between 0 and 1000000");
++        if (holdActions <= 0) throw new IllegalArgumentException("pixelwar.players.target-hold-actions must be positive");
++    }
++
++    @Override public void beginAction(Board board, Simulation.Player player) {
++        synchronized (board) {
++            if (weakOpponentBonus == 0) return;
++            var states = targets.computeIfAbsent(board, ignored -> new Target[4]);
++            int index = player.color().ordinal() - 1;
++            var target = states[index];
++            if (target == null) states[index] = target = new Target();
++            if (target.color == null || board.cellCount(target.color) == 0 || target.remainingActions == 0) {
++                target.color = weakestOpponent(board, player.color());
++                target.remainingActions = targetHoldActions;
++            }
++            target.remainingActions--;
++        }
++    }
++
++    private CellState weakestOpponent(Board board, CellState ally) {
++        CellState best = null;
++        long minimum = Long.MAX_VALUE;
++        int ties = 0;
++        for (var enemy : CellState.values()) if (enemy != CellState.EMPTY && enemy != ally) {
++            long count = board.cellCount(enemy);
++            if (count == 0) continue;
++            if (count < minimum) { best = enemy; minimum = count; ties = 1; }
++            else if (count == minimum && random.nextInt(++ties) == 0) best = enemy;
++        }
++        return best;
++    }
++
++    @Override public void reset(Board board) { targets.remove(board); }
++
++    CellState priorityTarget(Board board, CellState ally) {
++        synchronized (board) {
++            var states = targets.get(board);
++            var target = states == null ? null : states[ally.ordinal() - 1];
++            return target == null ? null : target.color;
++        }
++    }
++
++    @Override public Position choose(Board board, Simulation.Player player) {
++        synchronized (board) {
++            if (random.nextDouble() < explorationProbability || board.frontierSize(player.color()) == 0) {
++                var empty = board.randomEmptyPosition(random);
++                if (empty != null) return empty;
++                return new Position(random.nextInt(board.width()), random.nextInt(board.height()));
++            }
++            Position best = null;
++            int bestScore = Integer.MIN_VALUE, ties = 0;
++            for (int i = 0; i < sampleSize; i++) {
++                var candidate = board.randomFrontierPosition(player.color(), random);
++                int score = conquestScore(board, candidate, player.color());
++                if (score > bestScore) { best = candidate; bestScore = score; ties = 1; }
++                else if (score == bestScore && random.nextInt(++ties) == 0) best = candidate;
++            }
++            return best;
++        }
++    }
++
++    int conquestScore(Board board, Position target, CellState ally) {
++        synchronized (board) {
++            int base = score(board, target, ally);
++            var enemy = board.get(target.x(), target.y());
++            if (weakOpponentBonus == 0 || enemy == CellState.EMPTY || enemy == ally) return base;
++            long maximum = 0;
++            for (var color : CellState.values()) if (color != CellState.EMPTY && color != ally) maximum = Math.max(maximum, board.cellCount(color));
++            long count = board.cellCount(enemy);
++            int weakness = maximum == 0 ? 0 : (int) Math.round(weakOpponentBonus * (1.0 - count / (double) maximum));
++            return base + weakness + (enemy == priorityTarget(board, ally) ? weakOpponentBonus : 0);
++        }
++    }
++
++    int score(Board board, Position target, CellState ally) {
++        synchronized (board) {
++            int x = target.x(), y = target.y();
++            int score = board.get(x, y) != CellState.EMPTY && board.get(x, y) != ally ? 1 : 0;
++            if (x > 0 && board.get(x - 1, y) == ally) score += 2;
++            if (x + 1 < board.width() && board.get(x + 1, y) == ally) score += 2;
++            if (y > 0 && board.get(x, y - 1) == ally) score += 2;
++            if (y + 1 < board.height() && board.get(x, y + 1) == ally) score += 2;
++            score += 8 * (potential(board, x - 1, y, target, ally) + potential(board, x + 1, y, target, ally)
++                    + potential(board, x, y - 1, target, ally) + potential(board, x, y + 1, target, ally));
++            return score;
++        }
++    }
++
++    private int potential(Board board, int x, int y, Position target, CellState ally) {
++        if (x <= 0 || x >= board.width() - 1 || y <= 0 || y >= board.height() - 1 || board.get(x, y) == ally) return 0;
++        return after(board, x - 1, y, target, ally) == ally && after(board, x + 1, y, target, ally) == ally
++                && after(board, x, y - 1, target, ally) == ally && after(board, x, y + 1, target, ally) == ally ? 1 : 0;
++    }
++    private CellState after(Board board, int x, int y, Position target, CellState ally) {
++        return x == target.x() && y == target.y() ? ally : board.get(x, y);
++    }
++}
+diff --git a/src/test/java/org/pixelwar/pixelwar/domain/PrimitivePositionTests.java b/src/test/java/org/pixelwar/pixelwar/domain/PrimitivePositionTests.java
+new file mode 100644
+index 0000000..2cf15e2
+--- /dev/null
++++ b/src/test/java/org/pixelwar/pixelwar/domain/PrimitivePositionTests.java
+@@ -0,0 +1,103 @@
++package org.pixelwar.pixelwar.domain;
++
++import java.util.ArrayList;
++import java.util.List;
++import java.util.Random;
++import org.junit.jupiter.api.Test;
++import static org.junit.jupiter.api.Assertions.*;
++
++class PrimitivePositionTests {
++    // Retained O3 baseline oracle: ObjectFrontierReference is copied from ea462e1.
++    static final class TraceRandom extends Random {
++        final List<String> calls = new ArrayList<>();
++        final boolean duplicates;
++        TraceRandom(long seed, boolean duplicates) { super(seed); this.duplicates = duplicates; }
++        @Override public int nextInt(int bound) {
++            int value = duplicates ? 0 : super.nextInt(bound);
++            calls.add("int(" + bound + ")=" + value);
++            return value;
++        }
++        @Override public double nextDouble() {
++            double value = super.nextDouble(); calls.add("double=" + value); return value;
++        }
++    }
++
++    private Board board(int state) {
++        var board = new Board(7, 5);
++        if (state == 1) { board.place(0, 0, CellState.RED); board.place(6, 4, CellState.BLUE); }
++        if (state >= 2) {
++            for (int y = 0; y < 5; y++) for (int x = 0; x < 7; x++)
++                if (state != 4 || x != 6 || y != 4)
++                    board.place(x, y, state == 2 ? CellState.BLUE : CellState.values()[1 + (x + 2*y) % 4]);
++        }
++        return board;
++    }
++
++    @Test void selectionAndEveryRandomCallMatchObjectReferenceAcrossMutationsAndReset() {
++        for (double exploration : new double[]{0, .1, 1}) for (int sample : new int[]{1, 10})
++            for (int state = 0; state <= 4; state++) for (boolean duplicates : new boolean[]{false, true}) {
++                var a = board(state); var b = board(state);
++                var ar = new TraceRandom(33, duplicates); var br = new TraceRandom(33, duplicates);
++                var actual = new FrontierPlacementStrategy(ar, exploration, sample, 8, 3);
++                var reference = new ObjectFrontierReference(br, exploration, sample, 8, 3);
++                for (int action = 0; action < 24; action++) {
++                    var color = CellState.values()[1 + action % 4];
++                    var player = new Simulation.Player(action % 4, color.name(), color, 1);
++                    actual.beginAction(a, player); reference.beginAction(b, player);
++                    assertEquals(reference.priorityTarget(b, color), actual.priorityTarget(a, color));
++                    for (int pose = 0; pose < 3; pose++) {
++                        var counts = a.counts(); var maintenance = a.frontierMetrics();
++                        var expected = reference.choose(b, player); var selected = actual.choose(a, player);
++                        assertEquals(expected, selected, "state=" + state + ", sample=" + sample);
++                        assertEquals(br.calls, ar.calls, "draw type, bound, value and order");
++                        assertEquals(counts, a.counts()); assertEquals(maintenance, a.frontierMetrics());
++                        assertEquals(b.placeForPlayer(expected.x(), expected.y(), color), a.placeForPlayer(selected.x(), selected.y(), color));
++                    }
++                    assertEquals(b.counts(), a.counts());
++                    for (var c : CellState.values()) if (c != CellState.EMPTY) assertEquals(b.frontierSize(c), a.frontierSize(c));
++                    if (action == 11) { a.reset(); b.reset(); actual.reset(a); reference.reset(b); }
++                }
++                for (int y = 0; y < 5; y++) for (int x = 0; x < 7; x++) assertEquals(b.get(x, y), a.get(x, y));
++            }
++    }
++
++    @Test void primitiveScoresAndPositionAdaptersMatchReferenceIncludingConversionAndWeakness() {
++        var board = board(3);
++        board.place(1, 2, CellState.RED); board.place(3, 2, CellState.RED); board.place(2, 3, CellState.RED);
++        for (int bonus : new int[]{0, 8}) {
++            var actual = new FrontierPlacementStrategy(new Random(11), 0, 10, bonus, 20);
++            var reference = new ObjectFrontierReference(new Random(11), 0, 10, bonus, 20);
++            for (var ally : CellState.values()) if (ally != CellState.EMPTY) {
++                var player = new Simulation.Player(ally.ordinal(), ally.name(), ally, 1);
++                actual.beginAction(board, player); reference.beginAction(board, player);
++                var counts = board.counts(); var maintenance = board.frontierMetrics();
++                for (int y = 0; y < 5; y++) for (int x = 0; x < 7; x++) {
++                    var p = new PlacementStrategy.Position(x, y);
++                    assertEquals(reference.score(board, p, ally), actual.score(board, x, y, ally));
++                    assertEquals(reference.conquestScore(board, p, ally), actual.conquestScore(board, x, y, ally));
++                    assertEquals(actual.score(board, p, ally), actual.score(board, x, y, ally));
++                    assertEquals(actual.conquestScore(board, p, ally), actual.conquestScore(board, x, y, ally));
++                }
++                assertEquals(counts, board.counts()); assertEquals(maintenance, board.frontierMetrics());
++            }
++        }
++    }
++
++    @Test void primitiveFrontierAdapterRetainsSentinelValidationAndRandomSequence() {
++        var board = new Board(7, 5);
++        var ar = new TraceRandom(22, false); var br = new TraceRandom(22, false);
++        assertEquals(-1, board.randomFrontierId(CellState.RED, ar));
++        assertNull(board.randomFrontierPosition(CellState.RED, br));
++        assertTrue(ar.calls.isEmpty()); assertTrue(br.calls.isEmpty());
++        assertThrows(IllegalArgumentException.class, () -> board.randomFrontierId(null, ar));
++        assertThrows(IllegalArgumentException.class, () -> board.randomFrontierId(CellState.EMPTY, ar));
++        board.place(0, 0, CellState.RED); board.place(6, 4, CellState.RED);
++        for (int i = 0; i < 100; i++) {
++            int id = board.randomFrontierId(CellState.RED, ar);
++            assertEquals(new PlacementStrategy.Position(id % 7, id / 7), board.randomFrontierPosition(CellState.RED, br));
++            assertTrue(board.isFrontier(id % 7, id / 7, CellState.RED));
++        }
++        assertEquals(br.calls, ar.calls);
++        board.reset(); assertEquals(-1, board.randomFrontierId(CellState.RED, ar));
++    }
++}

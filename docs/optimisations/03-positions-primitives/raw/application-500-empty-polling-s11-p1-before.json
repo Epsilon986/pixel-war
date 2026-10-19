@@ -1,0 +1,335 @@
+﻿{
+    "mode":  "application",
+    "polling":  "polling",
+    "activeElapsedNanos":  1020377600,
+    "size":  500,
+    "initial":  "empty",
+    "seed":  11,
+    "serverPort":  60989,
+    "requestedSeconds":  1,
+    "warmupSeconds":  0.2,
+    "elapsedNanos":  1020176400,
+    "executedActions":  94584,
+    "before":  {
+                   "business":  {
+                                    "actions":  26328,
+                                    "attempts":  263280,
+                                    "modifications":  263280,
+                                    "conversions":  11299,
+                                    "conversionPasses":  26328,
+                                    "boardChanges":  274579,
+                                    "counts":  {
+                                                   "EMPTY":  124133,
+                                                   "RED":  46454,
+                                                   "BLUE":  44583,
+                                                   "GREEN":  14024,
+                                                   "YELLOW":  20806
+                                               },
+                                    "frontierSizes":  {
+                                                          "BLUE":  36235,
+                                                          "GREEN":  19809,
+                                                          "YELLOW":  23251,
+                                                          "RED":  36123
+                                                      },
+                                    "players":  [
+                                                    {
+                                                        "color":  "RED",
+                                                        "stock":  100,
+                                                        "eliminated":  false,
+                                                        "attempts":  65820,
+                                                        "modifications":  65820,
+                                                        "actions":  6582,
+                                                        "actionsWithoutStock":  0,
+                                                        "pixelsConsumed":  "0",
+                                                        "pixelsRefilled":  "0",
+                                                        "pixelsDiscarded":  "0",
+                                                        "conversionsReceived":  2438,
+                                                        "priorityTarget":  "GREEN"
+                                                    },
+                                                    {
+                                                        "color":  "BLUE",
+                                                        "stock":  100,
+                                                        "eliminated":  false,
+                                                        "attempts":  65820,
+                                                        "modifications":  65820,
+                                                        "actions":  6582,
+                                                        "actionsWithoutStock":  0,
+                                                        "pixelsConsumed":  "0",
+                                                        "pixelsRefilled":  "0",
+                                                        "pixelsDiscarded":  "0",
+                                                        "conversionsReceived":  2505,
+                                                        "priorityTarget":  "GREEN"
+                                                    },
+                                                    {
+                                                        "color":  "GREEN",
+                                                        "stock":  100,
+                                                        "eliminated":  false,
+                                                        "attempts":  65820,
+                                                        "modifications":  65820,
+                                                        "actions":  6582,
+                                                        "actionsWithoutStock":  0,
+                                                        "pixelsConsumed":  "0",
+                                                        "pixelsRefilled":  "0",
+                                                        "pixelsDiscarded":  "0",
+                                                        "conversionsReceived":  3178,
+                                                        "priorityTarget":  "YELLOW"
+                                                    },
+                                                    {
+                                                        "color":  "YELLOW",
+                                                        "stock":  100,
+                                                        "eliminated":  false,
+                                                        "attempts":  65820,
+                                                        "modifications":  65820,
+                                                        "actions":  6582,
+                                                        "actionsWithoutStock":  0,
+                                                        "pixelsConsumed":  "0",
+                                                        "pixelsRefilled":  "0",
+                                                        "pixelsDiscarded":  "0",
+                                                        "conversionsReceived":  3178,
+                                                        "priorityTarget":  "GREEN"
+                                                    }
+                                                ]
+                                },
+                   "elapsedMs":  258,
+                   "activeElapsedNanos":  257806200,
+                   "engineBlockedNanos":  0,
+                   "failure":  null,
+                   "cpuNanos":  250000000,
+                   "engineAllocatedBytes":  68476568,
+                   "processCpuNanos":  9437500000,
+                   "peakObservedHeapBytes":  151827840,
+                   "colorsLayout":  {
+                                        "type":  "byte[]",
+                                        "arrays":  1,
+                                        "totalArrayBytes":  250016,
+                                        "cells":  250000,
+                                        "measurement":  "Instrumentation.getObjectSize; color arrays only; shared enum instances excluded"
+                                    },
+                   "runtime":  {
+                                   "javaVersion":  "27+35-2325",
+                                   "vm":  "OpenJDK 64-Bit Server VM",
+                                   "flags":  [
+                                                 "-Xms2g",
+                                                 "-Xmx2g",
+                                                 "-XX:+UseG1GC",
+                                                 "-javaagent:C:\\Users\\gui35\\ideaProjects\\pixel-war\\target\\opti-03-results\\builds\\before\\source\\target\\storage-agent.jar"
+                                             ],
+                                   "os":  "Windows 11",
+                                   "gc":  [
+                                              "G1 Young Generation",
+                                              "G1 Concurrent GC",
+                                              "G1 Old Generation"
+                                          ],
+                                   "maxHeapBytes":  2147483648,
+                                   "processors":  20,
+                                   "compressedOops":  "true",
+                                   "objectAlignment":  "8"
+                               },
+                   "gc":  {
+                              "collections":  5,
+                              "collectionMillis":  11
+                          },
+                   "alive":  4,
+                   "victoryDetectedNanos":  null,
+                   "lastContestedNanos":  381960000,
+                   "victoryDetectedActions":  null,
+                   "victoryObservationPeriodMillis":  10
+               },
+    "after":  {
+                  "business":  {
+                                   "actions":  120912,
+                                   "attempts":  1209120,
+                                   "modifications":  1199440,
+                                   "conversions":  104878,
+                                   "conversionPasses":  120912,
+                                   "boardChanges":  1304318,
+                                   "counts":  {
+                                                  "EMPTY":  0,
+                                                  "RED":  117811,
+                                                  "BLUE":  118511,
+                                                  "GREEN":  6204,
+                                                  "YELLOW":  7474
+                                              },
+                                   "frontierSizes":  {
+                                                         "BLUE":  22516,
+                                                         "GREEN":  1908,
+                                                         "YELLOW":  2470,
+                                                         "RED":  22480
+                                                     },
+                                   "players":  [
+                                                   {
+                                                       "color":  "RED",
+                                                       "stock":  100,
+                                                       "eliminated":  false,
+                                                       "attempts":  302280,
+                                                       "modifications":  297758,
+                                                       "actions":  30228,
+                                                       "actionsWithoutStock":  0,
+                                                       "pixelsConsumed":  "0",
+                                                       "pixelsRefilled":  "0",
+                                                       "pixelsDiscarded":  "0",
+                                                       "conversionsReceived":  28210,
+                                                       "priorityTarget":  "GREEN"
+                                                   },
+                                                   {
+                                                       "color":  "BLUE",
+                                                       "stock":  100,
+                                                       "eliminated":  false,
+                                                       "attempts":  302280,
+                                                       "modifications":  297784,
+                                                       "actions":  30228,
+                                                       "actionsWithoutStock":  0,
+                                                       "pixelsConsumed":  "0",
+                                                       "pixelsRefilled":  "0",
+                                                       "pixelsDiscarded":  "0",
+                                                       "conversionsReceived":  28492,
+                                                       "priorityTarget":  "GREEN"
+                                                   },
+                                                   {
+                                                       "color":  "GREEN",
+                                                       "stock":  100,
+                                                       "eliminated":  false,
+                                                       "attempts":  302280,
+                                                       "modifications":  301982,
+                                                       "actions":  30228,
+                                                       "actionsWithoutStock":  0,
+                                                       "pixelsConsumed":  "0",
+                                                       "pixelsRefilled":  "0",
+                                                       "pixelsDiscarded":  "0",
+                                                       "conversionsReceived":  26881,
+                                                       "priorityTarget":  "YELLOW"
+                                                   },
+                                                   {
+                                                       "color":  "YELLOW",
+                                                       "stock":  100,
+                                                       "eliminated":  false,
+                                                       "attempts":  302280,
+                                                       "modifications":  301916,
+                                                       "actions":  30228,
+                                                       "actionsWithoutStock":  0,
+                                                       "pixelsConsumed":  "0",
+                                                       "pixelsRefilled":  "0",
+                                                       "pixelsDiscarded":  "0",
+                                                       "conversionsReceived":  21295,
+                                                       "priorityTarget":  "GREEN"
+                                                   }
+                                               ]
+                               },
+                  "elapsedMs":  1278,
+                  "activeElapsedNanos":  1278183800,
+                  "engineBlockedNanos":  3000000,
+                  "failure":  null,
+                  "cpuNanos":  1265625000,
+                  "engineAllocatedBytes":  455785448,
+                  "processCpuNanos":  10687500000,
+                  "peakObservedHeapBytes":  539800960,
+                  "colorsLayout":  {
+                                       "type":  "byte[]",
+                                       "arrays":  1,
+                                       "totalArrayBytes":  250016,
+                                       "cells":  250000,
+                                       "measurement":  "Instrumentation.getObjectSize; color arrays only; shared enum instances excluded"
+                                   },
+                  "runtime":  {
+                                  "javaVersion":  "27+35-2325",
+                                  "vm":  "OpenJDK 64-Bit Server VM",
+                                  "flags":  [
+                                                "-Xms2g",
+                                                "-Xmx2g",
+                                                "-XX:+UseG1GC",
+                                                "-javaagent:C:\\Users\\gui35\\ideaProjects\\pixel-war\\target\\opti-03-results\\builds\\before\\source\\target\\storage-agent.jar"
+                                            ],
+                                  "os":  "Windows 11",
+                                  "gc":  [
+                                             "G1 Young Generation",
+                                             "G1 Concurrent GC",
+                                             "G1 Old Generation"
+                                         ],
+                                  "maxHeapBytes":  2147483648,
+                                  "processors":  20,
+                                  "compressedOops":  "true",
+                                  "objectAlignment":  "8"
+                              },
+                  "gc":  {
+                             "collections":  5,
+                             "collectionMillis":  11
+                         },
+                  "alive":  4,
+                  "victoryDetectedNanos":  null,
+                  "lastContestedNanos":  1451970000,
+                  "victoryDetectedActions":  null,
+                  "victoryObservationPeriodMillis":  10
+              },
+    "cpuNanos":  1015625000,
+    "processCpuNanos":  1250000000,
+    "allocatedBytesPerAction":  4094.8667850799288,
+    "peakObservedHeapBytes":  539800960,
+    "heapSamplePeriodMillis":  10,
+    "attemptsPerSecond":  926950.96403527481,
+    "modificationsPerSecond":  917464.2798901113,
+    "httpP50Nanos":  15746000,
+    "httpP95Nanos":  39385800,
+    "httpP99Nanos":  39385800,
+    "httpSamples":  4,
+    "errors":  [
+
+               ],
+    "requests":  [
+                     {
+                         "Path":  "/api/simulation",
+                         "Status":  200,
+                         "ElapsedNanos":  15079900,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/simulation/scores",
+                         "Status":  200,
+                         "ElapsedNanos":  15746000,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/performance",
+                         "Status":  200,
+                         "ElapsedNanos":  20925300,
+                         "Error":  null
+                     },
+                     {
+                         "Path":  "/api/board/preview",
+                         "Status":  200,
+                         "ElapsedNanos":  39385800,
+                         "Error":  null
+                     }
+                 ],
+    "instrumentation":  "no JFR",
+    "colorsLayout":  {
+                         "type":  "byte[]",
+                         "arrays":  1,
+                         "totalArrayBytes":  250016,
+                         "cells":  250000,
+                         "measurement":  "Instrumentation.getObjectSize; color arrays only; shared enum instances excluded"
+                     },
+    "representativeContest":  true,
+    "victoryObservationPeriodMillis":  10,
+    "version":  "before",
+    "commit":  "ea462e19e55e6f8f7366358918f07d9dfed6f7bb",
+    "runId":  "application-500-empty-polling-s11-p1-before",
+    "pairOrder":  0,
+    "binarySha256":  "26939BEFCFBFD8C7CA250BCDB3224DDF8C763466AC64E312E1EC969BA6EE52E1",
+    "harnessSha256":  "92E9A949CF9572FE47899F5852BB0C3D337D59E1E61D78E660CF835D1C3790A8",
+    "configuration":  {
+                          "width":  500,
+                          "height":  500,
+                          "intervalNs":  10,
+                          "maxPixelsPerAction":  10,
+                          "strategy":  "frontier",
+                          "explorationProbability":  0.1,
+                          "frontierSampleSize":  10,
+                          "weakOpponentBonus":  8,
+                          "targetHoldActions":  20,
+                          "stockEnabled":  false,
+                          "conversionEnabled":  true,
+                          "previewWidth":  500,
+                          "previewHeight":  500
+                      },
+    "completedUtc":  "2026-10-19T16:44:50.3133338Z"
+}

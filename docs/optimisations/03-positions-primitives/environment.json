@@ -1,0 +1,49 @@
+﻿{
+    "StartedUtc":  "2026-10-19T16:54:19.4071805Z",
+    "BeforeRef":  "ea462e1",
+    "AfterRef":  "f61ad8f",
+    "SmallApplicationSeconds":  1,
+    "Study":  "paired primitive frontier candidates",
+    "Java":  "C:\\Users\\gui35\\.jdks\\openjdk-27\\bin\\java.exe",
+    "Flags":  [
+                  "-Xms2g",
+                  "-Xmx2g",
+                  "-XX:+UseG1GC"
+              ],
+    "EngineRepetitions":  5,
+    "ApplicationRepetitions":  3,
+    "ApplicationSeconds":  20,
+    "ApplicationWarmupSeconds":  0.2,
+    "EngineWarmupSeconds":  3,
+    "HeapSamplePeriodMs":  10,
+    "PerformanceSeed":  11,
+    "ReplaySeeds":  [
+                        11,
+                        22,
+                        33
+                    ],
+    "PollEndpoints":  [
+                          "/api/simulation",
+                          "/api/simulation/scores",
+                          "/api/performance",
+                          "/api/board/preview"
+                      ],
+    "PollPeriodMs":  1000,
+    "PreviewWidth":  500,
+    "PreviewHeight":  500,
+    "Cpu":  {
+                "Name":  "13th Gen Intel(R) Core(TM) i5-13600KF",
+                "NumberOfCores":  14,
+                "NumberOfLogicalProcessors":  20,
+                "L2CacheSize":  20480,
+                "L3CacheSize":  24576
+            },
+    "Computer":  {
+                     "TotalPhysicalMemory":  34188517376
+                 },
+    "Os":  {
+               "Caption":  "Microsoft Windows 11 Famille",
+               "Version":  "10.0.26300",
+               "OSArchitecture":  "64 bits"
+           }
+}

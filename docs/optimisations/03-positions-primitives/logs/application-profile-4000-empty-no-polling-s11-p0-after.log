@@ -1,0 +1,29 @@
+18:51:54.385 [main] INFO org.pixelwar.pixelwar.domain.Simulation -- Board 4000 x 4000, actions every 10 ns, max 10 pixels/action, conversions true
+18:51:54.391 [main] INFO org.pixelwar.pixelwar.domain.Simulation -- Simulation started
+18:51:57.476 [main] INFO org.pixelwar.pixelwar.domain.Simulation -- Board 4000 x 4000, actions every 10 ns, max 10 pixels/action, conversions true
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::                (v4.1.1)
+
+2026-10-19T18:51:57.894+02:00  INFO 30788 --- [opti-03] [           main] o.p.pixelwar.domain.PositionExperiment   : Starting PositionExperiment using Java 27 with PID 30788 (C:\Users\gui35\ideaProjects\pixel-war\target\opti-03-results\builds\after\source\target\experiment-classes started by gui35 in C:\Users\gui35\ideaProjects\pixel-war\target\opti-03-results\builds\after\source)
+2026-10-19T18:51:57.895+02:00  INFO 30788 --- [opti-03] [           main] o.p.pixelwar.domain.PositionExperiment   : No active profile set, falling back to 1 default profile: "default"
+2026-10-19T18:51:58.706+02:00  INFO 30788 --- [opti-03] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 61008 (http)
+2026-10-19T18:51:58.715+02:00  INFO 30788 --- [opti-03] [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-19T18:51:58.715+02:00  INFO 30788 --- [opti-03] [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-19T18:51:58.749+02:00  INFO 30788 --- [opti-03] [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 817 ms
+2026-10-19T18:51:58.819+02:00  INFO 30788 --- [opti-03] [           main] o.s.b.w.a.WelcomePageHandlerMapping      : Adding welcome page: class path resource [static/index.html]
+2026-10-19T18:51:59.023+02:00  INFO 30788 --- [opti-03] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 61008 (http) with context path '/'
+2026-10-19T18:51:59.028+02:00  INFO 30788 --- [opti-03] [           main] o.p.pixelwar.domain.PositionExperiment   : Started PositionExperiment in 1.44 seconds (process running for 4.853)
+2026-10-19T18:51:59.234+02:00  INFO 30788 --- [opti-03] [io-61008-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-10-19T18:51:59.235+02:00  INFO 30788 --- [opti-03] [io-61008-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2026-10-19T18:51:59.236+02:00  INFO 30788 --- [opti-03] [io-61008-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 0 ms
+2026-10-19T18:51:59.270+02:00  INFO 30788 --- [opti-03] [io-61008-exec-1] o.pixelwar.pixelwar.domain.Simulation    : Simulation started
+2026-10-19T18:51:59.533+02:00  INFO 30788 --- [opti-03] [io-61008-exec-2] o.pixelwar.pixelwar.domain.Simulation    : Simulation paused
+2026-10-19T18:52:00.116+02:00  INFO 30788 --- [opti-03] [io-61008-exec-3] o.pixelwar.pixelwar.domain.Simulation    : Simulation resumed
+2026-10-19T18:52:20.149+02:00  INFO 30788 --- [opti-03] [io-61008-exec-4] o.pixelwar.pixelwar.domain.Simulation    : Simulation paused

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import zipfile
 
@@ -17,18 +18,24 @@ def main():
     parser.add_argument('archive',type=Path)
     args=parser.parse_args()
     root,repo,archive=[p.resolve() for p in (args.results,args.repo,args.archive)]
+    sys.dont_write_bytecode=True
     spec=importlib.util.spec_from_file_location('package_helpers',repo/'scripts/opti01/package_audit.py')
     helpers=importlib.util.module_from_spec(spec); spec.loader.exec_module(helpers)
     proof=repo/'docs/optimisations/03-positions-primitives'; proof.mkdir(parents=True,exist_ok=True)
     for folder in ('raw','logs','figures'):
         shutil.copytree(root/folder,proof/folder,dirs_exist_ok=True)
     for pattern in ('*.csv','*.json','*.jsonl','*.txt'):
-        for path in root.glob(pattern): helpers.copy(path,proof/path.name)
+        for path in root.glob(pattern):
+            if path.name!='archive-verification.json': helpers.copy(path,proof/path.name)
     for path in (root/'profiles').glob('*.summary.json'):
         helpers.copy(path,proof/'profiles'/path.name)
     for version in ('before','after'):
         helpers.copy(root/f'builds/{version}/build.json',proof/f'build-{version}.json')
-        for path in (root/f'builds/{version}/source/scripts/opti03').glob('*.java'):
+        harness_sources=root/f'builds/{version}/harness-sources'
+        if not harness_sources.exists():
+            # First campaign compiled these exact archived files, before the offline exporter was enriched.
+            harness_sources=root/f'builds/{version}/source/scripts/opti03'
+        for path in harness_sources.glob('*.java'):
             helpers.copy(path,proof/'measured-harness-sources'/version/path.name)
     helpers.copy(root/'03-positions-primitives.md',proof.parent/'03-positions-primitives.md')
     helpers.copy(root/'SYNTHESE.md',proof/'SYNTHESE.md')
@@ -102,7 +109,10 @@ Logs : compilation/tests des deux archives, échec initial du nouveau jeu de tes
     assert len(profiles)==6, 'All six original JFR recordings are required'
     for path in profiles: helpers.copy(path,staged/'profiles'/path.name)
     for version in ('before','after'):
+        metadata=json.loads((root/f'builds/{version}/build.json').read_text(encoding='utf-8-sig'))
         for name in ('pixel-war-0.0.1-SNAPSHOT.jar','storage-agent.jar'):
+            expected=metadata['jarSha256' if name.startswith('pixel-war') else 'harnessSha256']
+            assert helpers.sha(root/f'builds/{version}/source/target/{name}').lower()==expected.lower()
             helpers.copy(root/f'builds/{version}/source/target/{name}',stage/f'binaries/{version}-{name}')
     for path in (repo/'scripts/opti03').glob('*'):
         if path.is_file(): helpers.copy(path,stage/'scripts/opti03'/path.name)

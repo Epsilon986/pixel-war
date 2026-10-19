@@ -1,6 +1,5 @@
 """Audit paired O3 observations, plot real measurements and write the French report."""
 import csv
-import hashlib
 import json
 import math
 import os
@@ -42,8 +41,17 @@ METRICS = ('elapsedNanos', 'activeElapsedNanos', 'cpuNanos', 'processCpuNanos',
 
 def analyze(root):
     runs = [load(p) for p in sorted((root/'raw').glob('*.json'))]
+    builds={v:load(root/f'builds/{v}/build.json') for v in ('before','after')}
+    configurations={}
     groups, observations, checks = {}, [], []
     for r in runs:
+        metadata=builds[r['version']]
+        assert r['commit']==metadata['commit']
+        assert r['binarySha256'].lower()==metadata['jarSha256'].lower()
+        assert r['harnessSha256'].lower()==metadata['harnessSha256'].lower()
+        if r['size'] in configurations:
+            assert r['configuration']==configurations[r['size']]
+        else: configurations[r['size']]=r['configuration']
         gc_before = r['before']['gc'] if r['mode']=='application' else r['gcBefore']
         gc_after = r['after']['gc'] if r['mode']=='application' else r['gcAfter']
         r['gcCollections'] = gc_after['collections']-gc_before['collections']
@@ -111,7 +119,7 @@ def analyze(root):
     dump(root/'replay-verification.json',replay)
     dump(root/'validation.json',dict(runs=len(runs),comparisons=len(replay),functionalReplays=sum(r['mode']=='replay' for r in runs)//2,
                                     nonRepresentative=[r['runId'] for r in runs if r['mode'] in ('engine','application') and not r['runId'].startswith('application-profile') and not r['representativeContest']],
-                                    workloadChecksPassed=True))
+                                    workloadChecksPassed=True,binaryHashesMatchBuilds=True,configurationsEqualBetweenVariants=True))
     plots(root,summary,runs)
     report(root,summary,runs,replay,paired_summary)
     print(json.dumps(load(root/'validation.json'),indent=2))
@@ -147,7 +155,7 @@ def plots(root, summary, runs):
             for d in data: keys.update(k for k,v in sorted(d[field].items(),key=lambda t:t[1],reverse=True)[:8])
             if field=='allocationEstimatedBytesByClass': keys.add('org.pixelwar.pixelwar.domain.PlacementStrategy$Position')
             keys=sorted(keys,key=lambda k:max(d[field].get(k,0) for d in data),reverse=True)[:12]
-            fig,axes=plt.subplots(1,2,figsize=(16,6),sharey=True)
+            fig,axes=plt.subplots(1,2,figsize=(16,6),sharex=True,sharey=True)
             for ax,d,version in zip(axes,data,('Avant','Après')):
                 if keys:
                     ax.barh(range(len(keys)),[d[field].get(k,0)/scale for k in keys],color='#58728a' if version=='Avant' else '#208b72')
@@ -178,11 +186,11 @@ def report(root, summary, runs, comparisons, pair_summary):
                 out.append(f"| {size} {initial} {polling} / {label} | {f(a['mean'],scale)} | {f(b['mean'],scale)} | {change} | {a['n']}/{b['n']} |")
         return '\n'.join(out)
     engine_conditions=[(s,i,'none') for s in (500,4000) for i in ('empty','full')]
-    compact_lines=['| Scénario | Octets/action avant → après | M tentatives/s avant → après | CPU moteur (s) avant → après |',
+    compact_lines=['| Scénario | Octets/action avant → après | k tentatives/s avant → après | CPU moteur (s) avant → après |',
                    '|---|---:|---:|---:|']
     for size,initial,polling in engine_conditions:
         cells=[]
-        for metric,scale in [('allocatedBytesPerAction',1),('attemptsPerSecond',1e6),('cpuNanos',1e9)]:
+        for metric,scale in [('allocatedBytesPerAction',1),('attemptsPerSecond',1e3),('cpuNanos',1e9)]:
             cells.append(' → '.join(f(row('engine',size,initial,v,metric)['mean'],scale) for v in ('before','after')))
         compact_lines.append(f"| {size} {initial} | "+' | '.join(cells)+' |')
     compact='\n'.join(compact_lines)
@@ -257,13 +265,14 @@ Les percentiles sont nearest rank ceil(p×n), par essai. Le tableau résume leur
 
 ### Dispersion moteur et rapports appariés
 
-| Scénario / mesure | Variante | Moyenne | Médiane | Écart type | Variance n−1 | n |
+| Scénario / mesure | Variante | Moyenne | Médiane | Écart type | Variance n−1 (unité²) | n |
 |---|---|---:|---:|---:|---:|---:|
 ''']
     for r in summary:
         if r['mode']=='engine' and r['metric'] in ('elapsedNanos','attemptsPerSecond','allocatedBytesPerAction','cpuNanos'):
             scale=1e9 if r['metric'].endswith('Nanos') else 1
-            lines.append(f"| {r['size']} {r['initial']} / {r['metric']} ({'s' if scale==1e9 else 'unité native'}) | {r['version']} | {f(r['mean'],scale)} | {f(r['median'],scale)} | {f(r['stdev'],scale)} | {f(r['sampleVariance'],scale**2)} | {r['n']} |")
+            unit='s' if scale==1e9 else ('octets/action' if r['metric']=='allocatedBytesPerAction' else 'tentatives/s')
+            lines.append(f"| {r['size']} {r['initial']} / {r['metric']} ({unit}) | {r['version']} | {f(r['mean'],scale)} | {f(r['median'],scale)} | {f(r['stdev'],scale)} | {f(r['sampleVariance'],scale**2)} | {r['n']} |")
     lines.append('\n| Scénario / variation après÷avant − 1 (%) | Moyenne | Médiane | Écart type | Variance | n |\n|---|---:|---:|---:|---:|---:|')
     for r in pair_summary:
         if r['mode']=='engine' and r['metric'] in ('elapsedNanos','attemptsPerSecond','allocatedBytesPerAction'):
