@@ -241,9 +241,15 @@ if ($Phase -in @('All','Profiles')) {
 Write-Host "Measurements saved in $results"
 if ($Phase -in @('All','Profiles','Analyze')) {
     $v = $versions['before']
+    # Offline exporter is compiled independently of the measured agent/classes.
+    $exporters = Join-Path $results 'exporter-classes'
+    New-Item -ItemType Directory -Force -Path $exporters | Out-Null
+    Invoke-LoggedNative (Join-Path $jdkBin 'javac.exe') @('--release','21','--class-path',$v.cp,'-d',$exporters,(Join-Path $PSScriptRoot 'opti03/JfrSummary.java')) (Join-Path $results 'logs/build-exporter.log')
     foreach ($profile in (Get-ChildItem -LiteralPath (Join-Path $results 'profiles') -Filter '*.jfr')) {
-        Invoke-LoggedNative $javaPath @('--class-path',$v.cp,'org.pixelwar.pixelwar.domain.JfrSummary',$profile.FullName,$profile.FullName.Replace('.jfr','.summary.json')) (Join-Path $results ('logs/export-' + $profile.BaseName + '.log'))
+        Invoke-LoggedNative $javaPath @('--class-path',($exporters + ';' + $v.cp),'org.pixelwar.pixelwar.domain.JfrSummary',$profile.FullName,$profile.FullName.Replace('.jfr','.summary.json')) (Join-Path $results ('logs/export-' + $profile.BaseName + '.log'))
     }
     & $Python (Join-Path $PSScriptRoot 'opti03/analyze.py') $results
     if ($LASTEXITCODE -ne 0) { throw 'Analysis failed; see scripts/opti03/requirements.txt.' }
+    & $Python (Join-Path $PSScriptRoot 'opti03/deliver.py') $results $repo (Join-Path $repo 'target/audit-opti-03.zip')
+    if ($LASTEXITCODE -ne 0) { throw 'Archive verification failed.' }
 }

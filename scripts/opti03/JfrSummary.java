@@ -19,6 +19,7 @@ public final class JfrSummary {
         var cpuStacks = new TreeMap<String, Long>();
         var allocationClasses = new TreeMap<String, Long>();
         var allocationStacks = new TreeMap<String, Long>();
+        var positionAllocationStacks = new TreeMap<String, Long>();
         var monitors = new TreeMap<String, Long>();
         var monitorCounts = new TreeMap<String, Long>();
         long gcNanos = 0, gcPauseNanos = 0, allocationSamples = 0;
@@ -40,6 +41,8 @@ public final class JfrSummary {
                     long weight = event.getLong("weight");
                     allocationClasses.merge(event.getClass("objectClass").getName(), weight, Long::sum);
                     if (stack != null) allocationStacks.merge(stack.getFrames().stream().map(JfrSummary::method).collect(java.util.stream.Collectors.joining(";")), weight, Long::sum);
+                    if (stack != null && event.getClass("objectClass").getName().equals("org.pixelwar.pixelwar.domain.PlacementStrategy$Position"))
+                        positionAllocationStacks.merge(stack.getFrames().stream().map(JfrSummary::method).collect(java.util.stream.Collectors.joining(";")), weight, Long::sum);
                 }
                 if (type.equals("jdk.JavaMonitorEnter")) {
                     String monitor = event.getClass("monitorClass").getName();
@@ -55,6 +58,7 @@ public final class JfrSummary {
                 "cpuExclusiveSamples", cpuExclusive, "cpuInclusiveSamples", cpuInclusive, "cpuStacks", cpuStacks,
                 "allocationSamples", allocationSamples, "allocationEstimatedBytesByClass", allocationClasses,
                 "allocationEstimatedBytesByStack", allocationStacks, "monitorWaitNanos", monitors, "monitorEvents", monitorCounts,
+                "positionAllocationEstimatedBytesByStack", positionAllocationStacks,
                 "gcCollectionDurationNanos", gcNanos, "gcStopTheWorldPauseNanos", gcPauseNanos, "monitorThresholdMillis", 1)));
     }
     private static String method(RecordedFrame frame) { return frame.getMethod().getType().getName() + "." + frame.getMethod().getName(); }
